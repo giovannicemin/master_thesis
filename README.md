@@ -1,1 +1,5 @@
-Just a repo where I put the material regarding my master thesis :)
+# Master Thesis Repo
+Author: Giovanni Cemin
+Material about my master thesis.
+
+
