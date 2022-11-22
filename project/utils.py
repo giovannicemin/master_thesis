@@ -25,7 +25,7 @@ def get_params_from_cmdline(argv, default_params=None):
         print(arg_help)
         sys.exit(2)
 
-    for opts, arg in opts:
+    for opt, arg in opts:
         if opt in ('-h', '--help'):
             print(arg_help)
         elif opt in ('-L', 'length'):

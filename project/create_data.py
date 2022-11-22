@@ -1,10 +1,15 @@
 import numpy as np
 #import matplotlib.pyplot as plt
 import time
+import sys
+
 import quimb as qu
-import quimb.tensor as qtn
-import quimb.linalg.base_linalg as la
-from itertools import product
+# import quimb.tensor as qtn
+# import quimb.linalg.base_linalg as la
+# from itertools import product
+#
+from utils import get_params_from_cmdline
+
 
 default_params = {'L' : 10,             # length of spin chain
                   'omega' : 1,          # Rabi frequency
@@ -148,11 +153,25 @@ class SpinChain:
         end = time.time()
         verboseprint(f'It took:{int(end - start)}s')
 
-
 if __name__ == '__main__':
 
-    prms = default_params
+    # check if custom parameters are given
+    argv = sys.argv
+    if len(argv) == 1:
+        print('Working with default params \n')
+        prms = default_params
+    else:
+        prms = get_params_from_cmdline(argv, default_params)
+        print('Problem parameters')
+    print('   -----------------------')
+    for key in default_params.keys():
+        print(f'   |{key} : {default_params[key]}')
+    print('   -----------------------\n')
+
     # creating verboseprint
     verboseprint = print if prms['verbose'] else lambda *a, **k: None
 
+    # evolution of the spin chain
     system = SpinChain(**prms)
+    system.thermalize()
+    system.evolve()
