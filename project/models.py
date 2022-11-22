@@ -60,6 +60,7 @@ class SpinChain:
         self.verboseprint = print if verbose else lambda *a, **k: None
 
         # create the MPS of the spin chain
+        self.verboseprint(f'System for beta = {self.beta}, potential = {self.vv}')
         self.verboseprint('Building the spin chain MPS: \n')
         B = np.array([1, 0, 0, 1])/np.sqrt(2)
         arrays = [B]*L
