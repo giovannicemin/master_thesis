@@ -12,10 +12,10 @@ import quimb as qu
 import quimb.tensor as qtn
 from itertools import product
 
-import warnings
-from tables import NaturalNameWarning
+#import warnings
+#from tables import NaturalNameWarning
 # avoid name warning to save files
-warnings.filterwarnings('ignore', category=NaturalNameWarning)
+#warnings.filterwarnings('ignore', category=NaturalNameWarning)
 
 
 class SpinChain:
@@ -39,13 +39,10 @@ class SpinChain:
         Cutoff for the TEBD algorithm
     tolerance : float
         Trotter tolerance for TEBD algorithm
-    fname : str
-        File name where to save data (hdf5)
     '''
 
     def __init__(self, L, omega=1, beta=0.01, potential=0.1, T=10,
-                 dt=0.1, cutoff=1e-10, tolerance=1e-3, verbose=True,
-                 fname=None):
+                 dt=0.1, cutoff=1e-10, tolerance=1e-3, verbose=True):
         # setting th parameters
         self.L = L
         self.beta = beta
@@ -53,7 +50,6 @@ class SpinChain:
         self.t = [i for i in np.arange(0, T, dt)]
         self.cutoff = cutoff
         self.tolerance = tolerance
-        self.fname = fname
         self._verbose = verbose
 
         # creating verboseprint
@@ -155,15 +151,11 @@ class SpinChain:
         end = time.time()
         self.verboseprint(f'It took:{int(end - start)}s')
 
-    def save_results(self):
-        '''Saving the results of the simulation to h5 file
+    def return_results(self):
+        '''Return the results, which are the evolution of
+        the coherence vector, as a pandas dataframe
         '''
         if self.results == None:
             raise Exception('The object have not been evolved jet')
         else:
-            self.verboseprint(f'Saving data @ {self.fname}.hdf5')
-
-            # I save as a pd dataframe
-            df = pd.DataFrame(data=self.results, dtype=np.float32)
-            df.to_hdf(self.fname, f'cohVec_{self.beta}_{self.vv}', 'a')
-
+            return pd.DataFrame(data=self.results, dtype=np.float32)
