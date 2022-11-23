@@ -21,9 +21,9 @@ def generate_data(argv):
                       'sites' : [0, 1],        # sites of the subsystem S spins
                       'omega' : 1,             # Rabi frequency
                       # inverse temperature
-                      'beta' : [0.001],#, 0.005, 0.01, 0.05, 0.1],
+                      'beta' : [0.001, 0.005, 0.01, 0.05, 0.1],
                       # interaction of subsystem's S spins
-                      'potential' : [0.1],#, 0.2, 0.3, 0.4, 0.5],
+                      'potential' : [0.1, 0.2, 0.3, 0.4, 0.5],
                       'potential_' : None,     # interaction of bath spins, if None same as potential
                       'T' : 10,                # total time for the evolution
                       'dt' : 0.1,              # interval every which save the data
@@ -57,6 +57,9 @@ def generate_data(argv):
             fname = prms['fname'][:-5] + '_' + str(i) + '.hdf5'
         prms['fname'] = fname
         print(f'File already exists, saving as {fname}')
+    # saving the txt file with psecifications
+    with open(prms['fname'][:-5]+'.txt', 'w') as f:
+        print(prms, file=f)
 
     # system parameters
     sys_prms = prms.copy()
@@ -69,6 +72,8 @@ def generate_data(argv):
     ### ACTUAL GENERATION
     store = pd.HDFStore(prms['fname'])
 
+    n_simulations = len(prms['potential']) * len(prms['beta'])
+    count = 1
     for vv in prms['potential']:
         for beta in prms['beta']:
 
@@ -80,7 +85,7 @@ def generate_data(argv):
                 '_' + str(int(vv*1e3)).zfill(4)
 
             for i in range(prms['num_traj']):
-                print(f'Trajectory: {i}')
+                print(f'=== {count}/{n_simulations}, trajectory: {i}')
 
                 # evolution of the spin chain
                 system = SpinChain(**sys_prms)
