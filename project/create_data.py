@@ -26,7 +26,7 @@ def generate_data(argv):
                       'potential' : [0.1, 0.2, 0.3, 0.4, 0.5],
                       'potential_' : None,     # interaction of bath spins, if None same as potential
                       'T' : 10,                # total time for the evolution
-                      'dt' : 0.1,              # interval every which save the data
+                      'dt' : 0.01,             # interval every which save the data
                       'cutoff' : 1e-8,         # cutoff for TEBD algorithm
                       'tolerance' : 1e-3,      # Trotter tolerance for TEBD algorithm
                       'verbose' : True,        # verbosity of the script
@@ -93,7 +93,7 @@ def generate_data(argv):
                 system.evolve()
 
                 store.append(gname, system.return_results())
-
+            count += 1
     store.close()
 
 if __name__ == '__main__':
