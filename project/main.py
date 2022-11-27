@@ -46,6 +46,7 @@ if __name__ == '__main__':
     prms = data_gen_params
     for beta in prms["beta"]:
         for potential in prms["potential"]:
+            print('====================================================\n')
             print(f'===Training the model for beta = {beta} and V = {potential}')
 
             # load the data

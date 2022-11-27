@@ -8,7 +8,7 @@ import os.path
 from models import SpinChain
 from utils import get_params_from_cmdline
 
-prms = {'L' : 10,                # length of spin chain
+prms = {'L' : 40,                # length of spin chain
         'sites' : [0, 1],        # sites of the subsystem S spins
         'omega' : 1,             # Rabi frequency
         # inverse temperature
