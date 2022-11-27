@@ -37,18 +37,22 @@ class SpinChain:
         Time step for observable measurement
     cutoff : float
         Cutoff for the TEBD algorithm
+    im_cutoff : float
+        Cutoff from TEBD imaginary time
     tolerance : float
         Trotter tolerance for TEBD algorithm
     '''
 
     def __init__(self, L, omega=1, beta=0.01, potential=0.1, T=10,
-                 dt=0.1, cutoff=1e-10, tolerance=1e-3, verbose=True):
+                 dt=0.1, cutoff=1e-10, im_cutoff=1e-10,
+                 tolerance=1e-3, verbose=True):
         # setting th parameters
         self.L = L
         self.beta = beta
         self.vv = potential
         self.t = [i for i in np.arange(0, T, dt)]
         self.cutoff = cutoff
+        self.im_cutoff = im_cutoff
         self.tolerance = tolerance
         self._verbose = verbose
 
@@ -99,9 +103,9 @@ class SpinChain:
         tebd = qtn.TEBD(self.psi, self.H, imag=True)
 
         # cutoff for truncating after each infinitesimal-time operator application
-        tebd.split_opts['cutoff'] = 1e-12
+        tebd.split_opts['cutoff'] = self.im_cutoff
 
-        tebd.update_to(self.beta/2, tol=1e-6)
+        tebd.update_to(self.beta/2, tol=self.tolerance)
         self.psi_th = tebd.pt
 
         if self._verbose:
