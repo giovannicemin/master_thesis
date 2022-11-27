@@ -109,7 +109,8 @@ def generate_data(default_params, argv=[1]):
                 '_dt_' + str(int(prms['dt']*1e3)).zfill(4)
 
             for i in range(prms['num_traj']):
-                print(f'=== {count}/{n_simulations}, trajectory: {i}')
+                print(f'===== {count}/{n_simulations}, trajectory: {i}')
+                print(f'== beta = {beta}, potential = {vv}')
 
                 # evolution of the spin chain
                 system = SpinChain(**sys_prms)
