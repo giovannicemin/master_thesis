@@ -71,4 +71,4 @@ if __name__ == '__main__':
                 '_beta_' + str(int(beta*1e3)).zfill(4) + \
                 '_dt_' + str(int(prms['dt']*1e3)).zfill(4)
 
-            torch.save(model.state_dict(), './trained_models/' + name)
+            torch.save(model.state_dict(), './trained_model/' + name)
