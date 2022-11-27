@@ -1,10 +1,14 @@
 import numpy as np
 import torch
 from torch import nn
+import os
 from itertools import product
 import opt_einsum as oe
 import getopt
 import sys
+from torch.utils.data.sampler import SubsetRandomSampler
+
+from ml.classes import CustomDatasetFromHDF5
 
 def get_arch_from_layer_list(input_dim, output_dim, layers):
     ''' Function returning the NN architecture from layer list
@@ -16,7 +20,7 @@ def get_arch_from_layer_list(input_dim, output_dim, layers):
         layers_module_list.append(nn.Linear(layers[i], layers[i+1]))
     return layers_module_list
 
-def pauli_s_const_test():
+def pauli_s_const():
     '''Function returning the structure constants
     for 2 spin algebra
     '''
@@ -40,11 +44,71 @@ def pauli_s_const_test():
     abc = oe.contract('aij,bjk,cki->abc', base_F, base_F, base_F )
     acb = oe.contract('aij,bki,cjk->abc', base_F, base_F, base_F )
 
-    f = np.real( 1j*0.25*(abc-acb))
-    d = np.real(0.25*(abc+acb))
+    f = np.real( 1j*0.5*(abc - acb) )
+    d = np.real( 0.5*(abc + acb) )
 
     # return as a torch tensor
     return torch.from_numpy(f).float(), torch.from_numpy(d).float()
+
+def ensure_empty_dir(directory):
+    if len(os.listdir(directory)) != 0:
+        raise Exception('Model dir not empty!')
+
+def load_data(path, L, beta, potential, dt, batch_size, validation_split):
+    '''Function to load the data from hdf5 file.
+    Reshuffling of data is performed. Then
+    separates train from validation and return the iterables.
+
+    Parameters
+    ----------
+    path : str
+        Path to the hdf5 file
+    beta : float
+    potential : float
+        Beta and potential to get the right group
+    batch_size : int
+    validation_split : float
+        Number 0 < .. < 1 which indicates the relative
+        sizes of validation and train
+
+    Return
+    ------
+    train and validation loaders
+    '''
+
+    # name of the group
+    gname = 'cohVec_L_' + str(L) + \
+        '_V_' + str(int(potential*1e3)).zfill(4) + \
+        '_beta_' + str(int(beta*1e3)).zfill(4) + \
+        '_dt_' + str(int(dt*1e3)).zfill(4)
+
+
+    group = 'cohVec_' + str(int(beta*1e3)).zfill(4) + \
+        '_' + str(int(vv*1e3)).zfill(4)
+
+    dataset = CustomDatasetFromHDF5(path, group)
+
+    # creating the indeces for training and validation split
+    dataset_size = len(dataset)
+    indeces = list(range(dataset_size))
+    split = int(np.floor(validation_split * dataset_size))
+
+    # shuffling the datesets
+    np.random.seed(42)
+    np.random.shuffle(indices)
+    train_indices, val_indices = indices[split:], indices[:split]
+
+    # Creating PT data samplers and loaders
+    train_sampler = SubsetRandomSampler(train_indices)
+    valid_sampler = SubsetRandomSampler(val_indices)
+
+    train_loader = torch.utils.data.DataLoader(dataset,
+                                               batch_size=batch_size,
+                                               sampler=train_sampler)
+    val_loader = torch.utils.data.DataLoader(dataset,
+                                             batch_size=batch_size,
+                                             sampler=valid_sampler)
+    return train_loader, val_loader
 
 
 def get_params_from_cmdline(argv, default_params=None):
