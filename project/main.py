@@ -1,8 +1,8 @@
 import torch
 
-from .ml.classes import MLLP
-from .ml.utils import ensure_empty_dir, load_data
-from .sfw.optimizers import Adam
+from ml.classes import MLLP
+from ml.utils import ensure_empty_dir, load_data
+from sfw.optimizers import Adam
 
 data_gen_params = {'L' : 10,               # length of spin chain
                   'sites' : [0, 1],        # sites of the subsystem S spins
@@ -23,7 +23,7 @@ data_gen_params = {'L' : 10,               # length of spin chain
                   'fname' : './data/data_tebd.hdf5'
                   }
 
-ml_params = {'model_dir': '../data/trained_model', # folder where the metadata of the training are stored
+ml_params = {'model_dir': './data/trained_model', # folder where the metadata of the training are stored
              'validation_split' : 0.2,
              'batch_size': 256,
              #'batches_per_epoch': 256,
@@ -44,9 +44,9 @@ if __name__ == '__main__':
 
     # then I train the model for all combinations of params
     prms = data_gen_params
-    for beta in range(len(prms["beta"])):
-        for potential in range(len(prms["potential"])):
-            print(f'===Training the model for beta = {beta} and C = {potential}')
+    for beta in prms["beta"]:
+        for potential in prms["potential"]:
+            print(f'===Training the model for beta = {beta} and V = {potential}')
 
             # load the data
             train_loader, val_loader = load_data(prms['fname'], prms['L'], beta, potential,

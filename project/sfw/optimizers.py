@@ -4,7 +4,7 @@
 # Description:  Pytorch implementation of Stochastic Frank Wolfe, AdaGradSFW and SGD with projection
 # ===========================================================================
 import torch
-from s_const import*
+#from s_const import*
 from math import sqrt
 from torch import Tensor
 from typing import List, Optional

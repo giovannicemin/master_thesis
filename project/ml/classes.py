@@ -8,8 +8,8 @@ from torch import nn
 import opt_einsum as oe
 from torch.utils.data.dataset import Dataset
 
-from ..sfw.constraints import create_simplex_constraints
-from ..ml.utils import pauli_s_const
+from sfw.constraints import create_simplex_constraints
+from ml.utils import pauli_s_const, get_arch_from_layer_list
 
 class CustomDatasetFromHDF5(Dataset):
     '''Class implementing the Dataset object of
@@ -94,7 +94,7 @@ class MLLP(nn.Module):
                 summed_train_loss = np.append(summed_train_loss, loss.item())
 
                 # backpropagate = calculate derivatives
-                self.loss.backward()
+                loss.backward()
 
                 # update values
                 self.optimizer.step(constraints)
@@ -206,7 +206,7 @@ class exp_LL(nn.Module):
         nn.init.kaiming_uniform_(self.v_x, a=1)
         nn.init.kaiming_uniform_(self.v_y, a=1)
         fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.v_x)
-        bound = 1 / sqrt(fan_in)
+        bound = 1 / np.sqrt(fan_in)
         nn.init.uniform_(self.omega, -bound, bound)  # bias init
 
     def forward(self, x):

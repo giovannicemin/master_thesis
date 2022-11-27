@@ -8,8 +8,6 @@ import getopt
 import sys
 from torch.utils.data.sampler import SubsetRandomSampler
 
-from ml.classes import CustomDatasetFromHDF5
-
 def get_arch_from_layer_list(input_dim, output_dim, layers):
     ''' Function returning the NN architecture from layer list
     '''
@@ -75,6 +73,8 @@ def load_data(path, L, beta, potential, dt, batch_size, validation_split):
     ------
     train and validation loaders
     '''
+    # put import here to avoid circular imports
+    from ml.classes import CustomDatasetFromHDF5
 
     # name of the group
     gname = 'cohVec_L_' + str(L) + \
@@ -82,11 +82,7 @@ def load_data(path, L, beta, potential, dt, batch_size, validation_split):
         '_beta_' + str(int(beta*1e3)).zfill(4) + \
         '_dt_' + str(int(dt*1e3)).zfill(4)
 
-
-    group = 'cohVec_' + str(int(beta*1e3)).zfill(4) + \
-        '_' + str(int(vv*1e3)).zfill(4)
-
-    dataset = CustomDatasetFromHDF5(path, group)
+    dataset = CustomDatasetFromHDF5(path, gname)
 
     # creating the indeces for training and validation split
     dataset_size = len(dataset)
@@ -95,8 +91,8 @@ def load_data(path, L, beta, potential, dt, batch_size, validation_split):
 
     # shuffling the datesets
     np.random.seed(42)
-    np.random.shuffle(indices)
-    train_indices, val_indices = indices[split:], indices[:split]
+    np.random.shuffle(indeces)
+    train_indices, val_indices = indeces[split:], indeces[:split]
 
     # Creating PT data samplers and loaders
     train_sampler = SubsetRandomSampler(train_indices)
