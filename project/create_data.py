@@ -17,7 +17,7 @@ prms = {'L' : 10,                # length of spin chain
         'potential' : [0.1, 0.2, 0.3, 0.4, 0.5],
         'potential_' : None,     # interaction of bath spins, if None same as potential
         'T' : 10,                # total time for the evolution
-        'dt' : 0.01,             # interval every which save the data
+        'dt' : 0.02,             # interval every which save the data
         'cutoff' : 1e-5,         # cutoff for TEBD algorithm
         'im_cutoff' : 1e-7,      # cutoff for TEBD algorithm, img t-e
         'tolerance' : 1e-5,      # Trotter tolerance for TEBD algorithm
