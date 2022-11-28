@@ -75,7 +75,7 @@ class SpinChain:
         # dims = [2]*L # overall space of L qbits
 
         I = qu.pauli('I')
-        X = qu.pauli('Y')
+        X = qu.pauli('X')
         Z = qu.pauli('Z')
 
         O_Rabi = (omega/2)*X & I
