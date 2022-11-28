@@ -34,8 +34,8 @@ ml_params = {'model_dir': './data/trained_model', # folder where the metadata of
                  'layers': [],
                  'nonlin': 'id',
                  'output_nonlin': 'id'
-             },
-         }
+                 },
+             }
 
 if __name__ == '__main__':
 
