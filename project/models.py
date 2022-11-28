@@ -106,7 +106,7 @@ class SpinChain:
         tebd.split_opts['cutoff'] = self.im_cutoff
 
         tebd.update_to(self.beta/2, tol=self.tolerance)
-        self.psi_th = tebd.pt
+        self.psi_th = tebd.pt / tebd.pt.norm() # normalization
 
         if self._verbose:
             self.psi_th.show()
