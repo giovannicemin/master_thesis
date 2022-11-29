@@ -9,7 +9,7 @@ import multiprocessing
 from models import SpinChain
 from utils import get_params_from_cmdline
 
-prms = {'L' : 40,                # length of spin chain
+prms = {'L' : 10,                # length of spin chain
         'sites' : [0, 1],        # sites of the subsystem S spins
         'omega' : 1,             # Rabi frequency
         # inverse temperature
@@ -18,10 +18,10 @@ prms = {'L' : 40,                # length of spin chain
         'potential' : [0.1, 0.2, 0.3, 0.4, 0.5],
         'potential_' : None,     # interaction of bath spins, if None same as potential
         'T' : 10,                # total time for the evolution
-        'dt' : 0.02,             # interval every which save the data
-        'cutoff' : 1e-5,         # cutoff for TEBD algorithm
-        'im_cutoff' : 1e-7,      # cutoff for TEBD algorithm, img t-e
-        'tolerance' : 1e-5,      # Trotter tolerance for TEBD algorithm
+        'dt' : 0.01,             # interval every which save the data
+        'cutoff' : 1e-8,         # cutoff for TEBD algorithm
+        'im_cutoff' : 1e-10,      # cutoff for TEBD algorithm, img t-e
+        'tolerance' : 1e-3,      # Trotter tolerance for TEBD algorithm
         'verbose' : True,        # verbosity of the script
         'num_traj' : 20,         # how many trajectories to do
         # file to save the data
