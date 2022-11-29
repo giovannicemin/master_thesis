@@ -4,6 +4,7 @@
 import pandas as pd
 import sys
 import os.path
+import multiprocessing
 
 from models import SpinChain
 from utils import get_params_from_cmdline
@@ -108,6 +109,7 @@ def generate_data(default_params, argv=[1]):
                 '_beta_' + str(int(beta*1e3)).zfill(4) + \
                 '_dt_' + str(int(prms['dt']*1e3)).zfill(4)
 
+            """
             for i in range(prms['num_traj']):
                 print(f'===== {count}/{n_simulations}, trajectory: {i}')
                 print(f'== beta = {beta}, potential = {vv}')
@@ -117,9 +119,32 @@ def generate_data(default_params, argv=[1]):
                 system.thermalize()
                 system.evolve()
 
-                store.append(gname, system.return_results())
+                store.append(gname, system.return_results())"""
+
+            print(f'==== {count}/{n_simulations}')
+            print(f'== beta = {beta}, potential = {vv}')
+
+            with multiprocessing.Pool() as pool:
+                # creating the list of inputs for the function
+                items = [(sys_prms, i) for i in range(prms('num_traj'))]
+                # calling the function for each trajectory
+                for result in pool.starmap(execute_trajectories, items):
+                    store.append(gname, result)
+
             count += 1
     store.close()
+
+def execute_trajectories(sys_prms, _):
+    '''Little function needed for the
+    parallelization
+    '''
+    # evolution of the spin chain
+    system = SpinChain(**sys_prms)
+    system.thermalize()
+    system.evolve()
+
+    return system.return_results()
+
 
 if __name__ == '__main__':
     argv = sys.argv
