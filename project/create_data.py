@@ -126,7 +126,7 @@ def generate_data(default_params, argv=[1]):
 
             with multiprocessing.Pool() as pool:
                 # creating the list of inputs for the function
-                items = [(sys_prms, i) for i in range(prms('num_traj'))]
+                items = [(sys_prms, i) for i in range(prms['num_traj'])]
                 # calling the function for each trajectory
                 for result in pool.starmap(execute_trajectories, items):
                     store.append(gname, result)
