@@ -67,9 +67,9 @@ class MLLP(nn.Module):
     def train_model(self, train_loader, n_epochs, device):
         '''Function to train the model
         '''
-        self.train()
 
         for epoch in range(n_epochs):
+            self.train()
             print('= Starting epoch ', epoch, '/', n_epochs)
 
             summed_train_loss = np.array([])
@@ -88,7 +88,7 @@ class MLLP(nn.Module):
                 recon_y = self.forward(X)
 
                 # calculate the loss
-                loss = self.loss(y, recon_y)
+                loss = self.loss(recon_y, y)
 
                 # sum to the loss per epoch
                 summed_train_loss = np.append(summed_train_loss, loss.item())
@@ -114,7 +114,7 @@ class MLLP(nn.Module):
             recon_y = self.forward(X)
 
             # calculate the loss
-            loss = self.loss(y, recon_y)
+            loss = self.loss(recon_y, y)
 
             summed_eval_loss = np.append(summed_eval_loss, loss.item())
 

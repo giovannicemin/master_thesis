@@ -6,25 +6,25 @@ from sfw.optimizers import Adam
 
 data_gen_params = {'L' : 10,               # length of spin chain
                   'sites' : [0, 1],        # sites of the subsystem S spins
-                  'omega' : 1,             # Rabi frequency
+                   'omega' : 1,             # Rabi frequency
                   # inverse temperature
-                  'beta' : [0.001, 0.005, 0.01, 0.05, 0.1],
+                   'beta' : [0.1],#, 0.005, 0.01, 0.05, 0.1],
                   # interaction of subsystem's S spins
-                  'potential' : [0.1, 0.2, 0.3, 0.4, 0.5],
-                  'potential_' : None,     # interaction of bath spins, if None same as potential
-                  'T' : 10,                # total time for the evolution
-                  'dt' : 0.02,             # interval every which save the data
-                  'cutoff' : 1e-5,         # cutoff for TEBD algorithm
-                  'im_cutoff' : 1e-7,      # cutoff for TEBD algorithm, img t-e
-                  'tolerance' : 1e-5,      # Trotter tolerance for TEBD algorithm
-                  'verbose' : True,        # verbosity of the script
-                  'num_traj' : 20,         # how many trajectories to do
+                   'potential' : [0.1],#, 0.2, 0.3, 0.4, 0.5],
+                   'potential_' : None,     # interaction of bath spins, if None same as potential
+                   'T' : 10,                # total time for the evolution
+                   'dt' : 0.01,             # interval every which save the data
+                   'cutoff' : 1e-8,         # cutoff for TEBD algorithm
+                   'im_cutoff' : 1e-10,      # cutoff for TEBD algorithm, img t-e
+                   'tolerance' : 1e-5,      # Trotter tolerance for TEBD algorithm
+                   'verbose' : True,        # verbosity of the script
+                   'num_traj' : 20,         # how many trajectories to do
                   # file to save the data
-                  'fname' : './data/data_tebd.hdf5'
+                   'fname' : './data/data_tebd_1.hdf5'
                   }
 
 ml_params = {'model_dir': './data/trained_model', # folder where the metadata of the training are stored
-             'validation_split' : 0.2,
+             'validation_split' : 0.8,
              'batch_size': 256,
              #'batches_per_epoch': 256,
              'n_epochs': 20,
@@ -40,7 +40,7 @@ ml_params = {'model_dir': './data/trained_model', # folder where the metadata of
 if __name__ == '__main__':
 
     # check if the model laready exists
-    ensure_empty_dir(ml_params['model_dir'])
+    # ensure_empty_dir(ml_params['model_dir'])
 
     # then I train the model for all combinations of params
     prms = data_gen_params
@@ -59,6 +59,7 @@ if __name__ == '__main__':
 
             model.set(loss = torch.nn.MSELoss(),
                       optimizer = Adam(model.parameters(), lr =0.01))
+                      #optimizer=torch.optim.Adam(model.parameters(), lr=0.01))
 
             # train the model
             model.train_model(train_loader, ml_params['n_epochs'], ml_params['device'])
