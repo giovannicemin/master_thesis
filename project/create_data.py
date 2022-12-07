@@ -116,7 +116,6 @@ def generate_data(default_params, argv=[1]):
             X = []
             y = []
 
-            """
             for i in range(prms['num_traj']):
                 print(f'===== {count}/{n_simulations}, trajectory: {i}')
                 print(f'== beta = {beta}, potential = {vv}')
@@ -125,9 +124,12 @@ def generate_data(default_params, argv=[1]):
                 system = SpinChain(**sys_prms)
                 system.thermalize()
                 system.evolve()
+                results = system.return_results()
 
-                store.append(gname, system.return_results())"""
+                X.extend(results[:-1])
+                y.extend(results[1:])
 
+            """
             print(f'==== {count}/{n_simulations}')
             print(f'== beta = {beta}, potential = {vv}')
 
@@ -139,6 +141,8 @@ def generate_data(default_params, argv=[1]):
                     # offset of 1 dt between input and output
                     X.extend(results[:-1])
                     y.extend(results[1:])
+            """
+
             subg.create_dataset('X', data=X)
             subg.create_dataset('y', data=y)
 
