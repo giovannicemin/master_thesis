@@ -29,11 +29,11 @@ def get_params_from_cmdline(argv, default_params=None):
         if opt in ('-h', '--help'):
             print(arg_help)
         elif opt in ('-L', '--length'):
-            default_params['L'] = arg
+            default_params['L'] = int(arg)
         elif opt in ('-b', '--beta'):
-            default_params['beta'] = arg
+            default_params['beta'] = float(arg)
         elif opt in ('-p', '--potential'):
-            default_params['potential'] = arg
+            default_params['potential'] = float(arg)
         elif opt in ('-w', '--working_dir'):
             default_params['working_dir'] = arg
 
