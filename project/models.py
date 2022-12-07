@@ -113,7 +113,7 @@ class SpinChain:
             print('\n')
 
     def evolve(self):
-        '''Perform time evolution of the SystemError
+        '''Perform time evolution of the System
         '''
 
         self.verboseprint('Performing the time evolution \n')
@@ -144,22 +144,26 @@ class SpinChain:
         # cutoff for truncating after each infinitesimal-time operator application
         tebd.split_opts['cutoff'] = self.cutoff
 
-        keys = self.results.keys()
+        self.keys = self.results.keys()
 
         for psit in tebd.at_times(self.t, tol=self.tolerance):
-            for key in keys:
+            for key in self.keys:
                 ob1 = qu.pauli(key[0]) & qu.pauli('I')
                 ob2 = qu.pauli(key[2]) & qu.pauli('I')
-                self.results[key].append((psit.H @ psit.gate(ob1 & ob2, (0, 1))).real)
+                self.results[key].append((psit.H @ psit.gate_(ob1 & ob2, (0, 1))).real)
 
         end = time.time()
         self.verboseprint(f'It took:{int(end - start)}s')
 
     def return_results(self):
         '''Return the results, which are the evolution of
-        the coherence vector, as a pandas dataframe
+        the coherence vector, as a vector of vectors
         '''
         if self.results == None:
             raise Exception('The object have not been evolved jet')
         else:
-            return pd.DataFrame(data=self.results, dtype=np.float32)
+            length = len(self.results['I1X2'])
+            return [[self.results[key][i] for key in self.keys] for i in range(length)]
+
+            # tried to return dataframe, but array is better
+            #return pd.DataFrame(data=self.results, dtype=np.float32)

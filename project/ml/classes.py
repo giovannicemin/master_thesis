@@ -6,14 +6,16 @@ import pandas as pd
 import torch
 from torch import nn
 import opt_einsum as oe
+import h5py
 from torch.utils.data.dataset import Dataset
 
 from sfw.constraints import create_simplex_constraints
 from ml.utils import pauli_s_const, get_arch_from_layer_list
 
 class CustomDatasetFromHDF5(Dataset):
-    '''Class implementing the Dataset object of
-    the data to the pass to DataLoader
+    '''Class implementing the Dataset object, for
+    the data, to the pass to DataLoader. It directly takes
+    the data from the hdf5 file
 
     Parameters
     ----------
@@ -24,18 +26,17 @@ class CustomDatasetFromHDF5(Dataset):
     '''
 
     def __init__(self, path, group):
-        self.data = pd.read_hdf(path, group)
+        with h5py.File(path, 'r') as f:
+            self.X = f[group+'/X']
+            self.y = f[group+'/y']
 
     def __getitem__(self, index):
         # get the vector at t and t+dt
-        self.v = torch.tensor(self.data.iloc[index])
-        self.v1 = torch.tensor(self.data.iloc[index+1])
-        return self.v, self.v1
+        # return as tensors
+        return torch.tensor(self.X[index]), torch.tensor(self.y[index])
 
     def __len__(self):
-        # return the shape -1, because I have to account
-        # for the fact last point has no t+dt :(
-        return self.data.shape[0] - 1
+        return len(self.X)
 
 class MLLP(nn.Module):
     '''Machine learning model to parametrize the Lindbladian operator
@@ -177,7 +178,7 @@ class exp_LL(nn.Module):
         Time step for the input data
     '''
 
-    def __init__(self, data_dim, layers, nonlin, output_nonlin, dt=0.01):
+    def __init__(self, data_dim, layers, nonlin, output_nonlin, dt):
         super().__init__()
         self.nonlin = nonlin
         self.output_nonlin = output_nonlin
@@ -206,7 +207,7 @@ class exp_LL(nn.Module):
         nn.init.kaiming_uniform_(self.v_x, a=1)
         nn.init.kaiming_uniform_(self.v_y, a=1)
         fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.v_x)
-        bound = 1 / np.sqrt(fan_in)
+        bound = 1. / np.sqrt(fan_in)
         nn.init.uniform_(self.omega, -bound, bound)  # bias init
 
     def forward(self, x):

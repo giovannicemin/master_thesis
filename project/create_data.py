@@ -5,6 +5,7 @@ import pandas as pd
 import sys
 import os.path
 import multiprocessing
+import h5py
 
 from models import SpinChain
 from utils import get_params_from_cmdline
@@ -93,7 +94,7 @@ def generate_data(default_params, argv=[1]):
     sys_prms['verbose'] = False
 
     ### ACTUAL GENERATION
-    store = pd.HDFStore(prms['fname'])
+    file = h5py.File(prms['fname'], 'w')
 
     n_simulations = len(prms['potential']) * len(prms['beta'])
     count = 1
@@ -108,6 +109,12 @@ def generate_data(default_params, argv=[1]):
                 '_V_' + str(int(vv*1e3)).zfill(4) + \
                 '_beta_' + str(int(beta*1e3)).zfill(4) + \
                 '_dt_' + str(int(prms['dt']*1e3)).zfill(4)
+            # create the subgroup
+            subg = file.create_group(gname)
+
+            # create the input and output arrays
+            X = []
+            y = []
 
             """
             for i in range(prms['num_traj']):
@@ -128,11 +135,15 @@ def generate_data(default_params, argv=[1]):
                 # creating the list of inputs for the function
                 items = [(sys_prms, i) for i in range(prms['num_traj'])]
                 # calling the function for each trajectory
-                for result in pool.starmap(execute_trajectories, items):
-                    store.append(gname, result)
+                for results in pool.starmap(execute_trajectories, items):
+                    # offset of 1 dt between input and output
+                    X.extend(results[:-1])
+                    y.extend(results[1:])
+            subg.create_dataset('X', data=X)
+            subg.create_dataset('y', data=y)
 
             count += 1
-    store.close()
+    file.close()
 
 def execute_trajectories(sys_prms, _):
     '''Little function needed for the

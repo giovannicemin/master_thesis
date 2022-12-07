@@ -33,7 +33,8 @@ ml_params = {'model_dir': './data/trained_model', # folder where the metadata of
                  'data_dim': 15,
                  'layers': [],
                  'nonlin': 'id',
-                 'output_nonlin': 'id'
+                 'output_nonlin': 'id',
+                 'dt' : 0.01
                  },
              }
 
@@ -47,7 +48,7 @@ if __name__ == '__main__':
     for beta in prms["beta"]:
         for potential in prms["potential"]:
             print('====================================================\n')
-            print(f'===Training the model for beta = {beta} and V = {potential}')
+            print(f'=== Training the model for beta = {beta} and V = {potential}')
 
             # load the data
             train_loader, val_loader = load_data(prms['fname'], prms['L'], beta, potential,
