@@ -182,5 +182,5 @@ class exp_LL(nn.Module):
         L[1:,1:] = torch.add(h_commutator_x, d_super_x)
         L[1:,0] = tr_id
 
-        exp_dt_L = torch.matrix_exp(0.5*self.dt*L )
+        exp_dt_L = torch.matrix_exp(self.dt*L )
         return torch.add(exp_dt_L[1:,0], x @ torch.transpose(exp_dt_L[1:,1:],0,1))
