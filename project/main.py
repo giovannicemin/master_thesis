@@ -2,6 +2,7 @@ import torch
 
 from ml.classes import MLLP
 from ml.utils import ensure_empty_dir, load_data
+from ml.core import train, eval
 from sfw.optimizers import Adam
 
 data_gen_params = {'L' : 10,               # length of spin chain
@@ -27,7 +28,7 @@ ml_params = {'model_dir': './data/trained_model', # folder where the metadata of
              'validation_split' : 0.8,
              'batch_size': 256,
              #'batches_per_epoch': 256,
-             'n_epochs': 20,
+             'n_epochs': 40,
              'device': 'cpu',
              'mlp_params': {
                  'data_dim': 15,
@@ -51,22 +52,23 @@ if __name__ == '__main__':
             print(f'=== Training the model for beta = {beta} and V = {potential}')
 
             # load the data
-            train_loader, val_loader = load_data(prms['fname'], prms['L'], beta, potential,
+            train_loader, eval_loader = load_data(prms['fname'], prms['L'], beta, potential,
                                                  prms['dt'],
                                                  ml_params['batch_size'],
                                                  ml_params['validation_split'])
             # create the model
             model = MLLP(ml_params['mlp_params']).to(ml_params['device'])
 
-            model.set(loss = torch.nn.MSELoss(),
-                      optimizer = Adam(model.parameters(), lr =0.01))
-                      #optimizer=torch.optim.Adam(model.parameters(), lr=0.01))
+            criterion = torch.nn.MSELoss()
+            optimizer = Adam(model.parameters(), lr=0.01)
+            # optimizer=torch.optim.Adam(model.parameters(), lr=0.01)
 
             # train the model
-            model.train_model(train_loader, ml_params['n_epochs'], ml_params['device'])
+            train(model, criterion, optimizer, train_loader,
+                  ml_params['n_epochs'], ml_params['device'])
 
             # eval the model
-            model.eval_model(val_loader, ml_params['device'])
+            eval(model, criterion, eval_loader, ml_params['device'])
 
             # save the model
             name = 'model_L_' + str(prms['L']) + \

@@ -10,13 +10,13 @@ import h5py
 from models import SpinChain
 from utils import get_params_from_cmdline
 
-prms = {'L' : 10,                # length of spin chain
+prms = {'L' : 20,                # length of spin chain
         'sites' : [0, 1],        # sites of the subsystem S spins
         'omega' : 1,             # Rabi frequency
         # inverse temperature
-        'beta' : [0.01],#, 0.005, 0.01, 0.05, 0.1],
+        'beta' : [0.001, 0.005, 0.01, 0.05, 0.1],
         # interaction of subsystem's S spins
-        'potential' : [0.1],#, 0.2, 0.3, 0.4, 0.5],
+        'potential' : [0.1, 0.2, 0.3, 0.4, 0.5],
         'potential_' : None,     # interaction of bath spins, if None same as potential
         'T' : 10,                # total time for the evolution
         'dt' : 0.01,             # interval every which save the data
@@ -130,6 +130,9 @@ def generate_data(default_params, argv=[1]):
                 y.extend(results[1:])
 
             """
+            Attempt to multiprocessing, but this removes the stochasticity of
+            the initial consitions.
+
             print(f'==== {count}/{n_simulations}')
             print(f'== beta = {beta}, potential = {vv}')
 

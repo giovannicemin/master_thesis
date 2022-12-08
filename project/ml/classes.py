@@ -9,7 +9,6 @@ import opt_einsum as oe
 import h5py
 from torch.utils.data.dataset import Dataset
 
-from sfw.constraints import create_simplex_constraints
 from ml.utils import pauli_s_const, get_arch_from_layer_list
 
 class CustomDatasetFromHDF5(Dataset):
@@ -27,8 +26,8 @@ class CustomDatasetFromHDF5(Dataset):
 
     def __init__(self, path, group):
         with h5py.File(path, 'r') as f:
-            self.X = f[group+'/X']
-            self.y = f[group+'/y']
+            self.X = f[group + '/X'][()]
+            self.y = f[group + '/y'][()]
 
     def __getitem__(self, index):
         # get the vector at t and t+dt
@@ -36,7 +35,7 @@ class CustomDatasetFromHDF5(Dataset):
         return torch.tensor(self.X[index]), torch.tensor(self.y[index])
 
     def __len__(self):
-        return len(self.X)
+        return self.X.shape[0]
 
 class MLLP(nn.Module):
     '''Machine learning model to parametrize the Lindbladian operator
@@ -54,73 +53,10 @@ class MLLP(nn.Module):
         super().__init__()
         self.MLP = exp_LL(**mlp_params)  # multi(=1) layer perceptron
 
-    def set(self, loss, optimizer):
-        '''Function to set loss and optimizer of the model
-        '''
-        self.loss = loss
-        self.optimizer = optimizer
-
     def forward(self, x):
         '''Forward step of the model
         '''
-        return self.MLP(x)
-
-    def train_model(self, train_loader, n_epochs, device):
-        '''Function to train the model
-        '''
-
-        for epoch in range(n_epochs):
-            self.train()
-            print('= Starting epoch ', epoch, '/', n_epochs)
-
-            summed_train_loss = np.array([])
-            # Train
-            for batch_index, (batch_in, batch_out) in enumerate(train_loader):
-
-                constraints = create_simplex_constraints(self)
-
-                X = batch_in.float().to(device)
-                y = batch_out.float().to(device)
-
-                # set gradients to zero to avoid using old data
-                self.optimizer.zero_grad()
-
-                # apply the model
-                recon_y = self.forward(X)
-
-                # calculate the loss
-                loss = self.loss(recon_y, y)
-
-                # sum to the loss per epoch
-                summed_train_loss = np.append(summed_train_loss, loss.item())
-
-                # backpropagate = calculate derivatives
-                loss.backward()
-
-                # update values
-                self.optimizer.step(constraints)
-
-            print('=== Mean train loss: {:.12f}'.format(summed_train_loss.mean()))
-
-    def eval_model(self, eval_loader, device):
-        self.eval()
-        summed_eval_loss = np.array([])
-
-        for batch_index, (batch_in, batch_out) in enumerate(eval_loader):
-
-            X = batch_in.float().to(device)
-            y = batch_out.float().to(device)
-
-            # apply the model
-            recon_y = self.forward(X)
-
-            # calculate the loss
-            loss = self.loss(recon_y, y)
-
-            summed_eval_loss = np.append(summed_eval_loss, loss.item())
-
-        print('=== Test set loss: {:.12f}'.format(summed_eval_loss.mean()))
-        return {'loss': summed_eval_loss}
+        return self.MLP.forward(x)
 
     def trace_loss(self, x, recon_x):
         '''Function
@@ -206,6 +142,9 @@ class exp_LL(nn.Module):
         # initialize omega and v
         nn.init.kaiming_uniform_(self.v_x, a=1)
         nn.init.kaiming_uniform_(self.v_y, a=1)
+        # rescaling to avoid too big initial values
+        self.v_x.data = 0.001*self.v_x.data
+        self.v_y.data = 0.001*self.v_y.data
         fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.v_x)
         bound = 1. / np.sqrt(fan_in)
         nn.init.uniform_(self.omega, -bound, bound)  # bias init
@@ -243,6 +182,5 @@ class exp_LL(nn.Module):
         L[1:,1:] = torch.add(h_commutator_x, d_super_x)
         L[1:,0] = tr_id
 
-        exp_dt_L = torch.matrix_exp(self.dt*L )
-        # memo: first element of x is identity
+        exp_dt_L = torch.matrix_exp(0.5*self.dt*L )
         return torch.add(exp_dt_L[1:,0], x @ torch.transpose(exp_dt_L[1:,1:],0,1))
