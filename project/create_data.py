@@ -95,9 +95,11 @@ def generate_data(default_params, argv=[1]):
     sys_prms.pop('fname')
     sys_prms['verbose'] = False
 
-    ### ACTUAL GENERATION
+    # create the file
     file = h5py.File(prms['fname'], 'w')
+    file.close()
 
+    ### ACTUAL GENERATION
     n_simulations = len(prms['potential']) * len(prms['beta'])
     count = 1
     for vv in prms['potential']:
@@ -105,14 +107,6 @@ def generate_data(default_params, argv=[1]):
 
             sys_prms['potential'] = vv
             sys_prms['beta'] = beta
-
-            # group name in hdf5 file
-            gname = 'cohVec_L_' + str(prms['L']) + \
-                '_V_' + str(int(vv*1e3)).zfill(4) + \
-                '_beta_' + str(int(beta*1e3)).zfill(4) + \
-                '_dt_' + str(int(prms['dt']*1e3)).zfill(4)
-            # create the subgroup
-            subg = file.create_group(gname)
 
             # create the input and output arrays
             X = []
@@ -147,11 +141,23 @@ def generate_data(default_params, argv=[1]):
                     X.extend(results[:-1])
                     y.extend(results[1:])
 
+            # save to file
+            file = h5py.File(prms['fname'], 'a')
+
+            # group name in hdf5 file
+            gname = 'cohVec_L_' + str(prms['L']) + \
+                '_V_' + str(int(vv*1e3)).zfill(4) + \
+                '_beta_' + str(int(beta*1e3)).zfill(4) + \
+                '_dt_' + str(int(prms['dt']*1e3)).zfill(4)
+            # create the subgroup
+            subg = file.create_group(gname)
+
             subg.create_dataset('X', data=X)
             subg.create_dataset('y', data=y)
 
+            file.close()
+
             count += 1
-    file.close()
 
 def execute_trajectories(sys_prms, seed):
     '''Little function needed for the
@@ -163,7 +169,6 @@ def execute_trajectories(sys_prms, seed):
     system.evolve(seed)
 
     return system.return_results()
-
 
 if __name__ == '__main__':
     argv = sys.argv
