@@ -112,15 +112,20 @@ class SpinChain:
             self.psi_th.show()
             print('\n')
 
-    def evolve(self):
+    def evolve(self, seed):
         '''Perform time evolution of the System
+        Parameter
+        ---------
+        seed : int
+            Seed needed for random perturbation of thermal state
         '''
 
         self.verboseprint('Performing the time evolution \n')
 
         # initial coditions ootained by means of random unitary
-        Rand1 = qu.gen.rand.rand_uni(2) & qu.pauli('I')
-        Rand2 = qu.gen.rand.rand_uni(2) & qu.pauli('I')
+        rand_uni = qu.gen.rand.random_seed_fn(qu.gen.rand.rand_uni)
+        Rand1 = rand_uni(2, seed=seed) & qu.pauli('I')
+        Rand2 = rand_uni(2, seed=3*seed) & qu.pauli('I')
 
         self.psi_init = self.psi_th.gate(Rand1&Rand2, (0,1), contract='swap+split')
 

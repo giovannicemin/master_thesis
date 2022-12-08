@@ -2,10 +2,12 @@
 '''File for the data generation
 '''
 import pandas as pd
+import numpy as np
 import sys
 import os.path
 import multiprocessing
 import h5py
+import quimb as qu
 
 from models import SpinChain
 from utils import get_params_from_cmdline
@@ -14,9 +16,9 @@ prms = {'L' : 20,                # length of spin chain
         'sites' : [0, 1],        # sites of the subsystem S spins
         'omega' : 1,             # Rabi frequency
         # inverse temperature
-        'beta' : [0.001, 0.005, 0.01, 0.05, 0.1],
+        'beta' : [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10],
         # interaction of subsystem's S spins
-        'potential' : [0.1, 0.2, 0.3, 0.4, 0.5],
+        'potential' : [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5],
         'potential_' : None,     # interaction of bath spins, if None same as potential
         'T' : 10,                # total time for the evolution
         'dt' : 0.01,             # interval every which save the data
@@ -115,7 +117,7 @@ def generate_data(default_params, argv=[1]):
             # create the input and output arrays
             X = []
             y = []
-
+            '''
             for i in range(prms['num_traj']):
                 print(f'===== {count}/{n_simulations}, trajectory: {i}')
                 print(f'== beta = {beta}, potential = {vv}')
@@ -128,23 +130,22 @@ def generate_data(default_params, argv=[1]):
 
                 X.extend(results[:-1])
                 y.extend(results[1:])
-
-            """
-            Attempt to multiprocessing, but this removes the stochasticity of
-            the initial consitions.
+            '''
 
             print(f'==== {count}/{n_simulations}')
             print(f'== beta = {beta}, potential = {vv}')
 
+            # random seed
+            seed = np.random.randint(420)
+
             with multiprocessing.Pool() as pool:
                 # creating the list of inputs for the function
-                items = [(sys_prms, i) for i in range(prms['num_traj'])]
+                items = [(sys_prms, seed*i) for i in range(prms['num_traj'])]
                 # calling the function for each trajectory
                 for results in pool.starmap(execute_trajectories, items):
                     # offset of 1 dt between input and output
                     X.extend(results[:-1])
                     y.extend(results[1:])
-            """
 
             subg.create_dataset('X', data=X)
             subg.create_dataset('y', data=y)
@@ -152,14 +153,14 @@ def generate_data(default_params, argv=[1]):
             count += 1
     file.close()
 
-def execute_trajectories(sys_prms, _):
+def execute_trajectories(sys_prms, seed):
     '''Little function needed for the
     parallelization
     '''
     # evolution of the spin chain
     system = SpinChain(**sys_prms)
     system.thermalize()
-    system.evolve()
+    system.evolve(seed)
 
     return system.return_results()
 
