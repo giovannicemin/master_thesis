@@ -21,7 +21,7 @@ data_gen_params = {'L' : 10,               # length of spin chain
                    'verbose' : True,        # verbosity of the script
                    'num_traj' : 20,         # how many trajectories to do
                   # file to save the data
-                   'fname' : './data/data_tebd_1.hdf5'
+                   'fname' : './data/data_tebd_first.hdf5'
                   }
 
 ml_params = {'model_dir': './data/trained_model', # folder where the metadata of the training are stored

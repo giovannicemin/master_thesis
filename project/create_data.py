@@ -12,13 +12,13 @@ import quimb as qu
 from models import SpinChain
 from utils import get_params_from_cmdline
 
-prms = {'L' : 20,                # length of spin chain
+prms = {'L' : 10,                # length of spin chain
         'sites' : [0, 1],        # sites of the subsystem S spins
         'omega' : 1,             # Rabi frequency
         # inverse temperature
-        'beta' : [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10],
+        'beta' : [0.01],# 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10],
         # interaction of subsystem's S spins
-        'potential' : [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5],
+        'potential' : [0.1],#, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5],
         'potential_' : None,     # interaction of bath spins, if None same as potential
         'T' : 10,                # total time for the evolution
         'dt' : 0.01,             # interval every which save the data
