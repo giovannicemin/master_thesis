@@ -42,7 +42,7 @@ def pauli_s_const():
     abc = oe.contract('aij,bjk,cki->abc', base_F, base_F, base_F )
     acb = oe.contract('aij,bki,cjk->abc', base_F, base_F, base_F )
 
-    f = np.real( -1j*0.5*(abc - acb) )
+    f = np.real( 1j*0.5*(abc - acb) )
     d = np.real( 0.5*(abc + acb) )
 
     # return as a torch tensor

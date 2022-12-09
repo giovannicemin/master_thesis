@@ -5,21 +5,16 @@
 import numpy as np
 import pandas as pd
 import time
-import pickle
-import h5py
 
 import quimb as qu
 import quimb.tensor as qtn
+import quimb.linalg.base_linalg as la
 from itertools import product
-
-#import warnings
-#from tables import NaturalNameWarning
-# avoid name warning to save files
-#warnings.filterwarnings('ignore', category=NaturalNameWarning)
 
 
 class SpinChain:
-    '''Class implementing the spin chain with PBC
+    '''Class implementing the spin chain with PBC.
+    The evolution is done using the TEBD algorithm.
 
     Parameters
     ----------
@@ -83,8 +78,8 @@ class SpinChain:
 
         # the hamiltonian
         H1 = {i: O_Rabi for i in range(L)}
-        H2 = {None: self.vv*N&N,
-              (L-1, 0): self.vv*N&N} # for safety
+        H2 = {None: self.vv*N&N}
+              #(L-1, 0): self.vv*N&N} # for safety
 
         self.H = qtn.LocalHam1D(L=L, H2=H2, H1=H1, cyclic=True)
 
@@ -124,10 +119,10 @@ class SpinChain:
 
         # initial coditions ootained by means of random unitary
         rand_uni = qu.gen.rand.random_seed_fn(qu.gen.rand.rand_uni)
-        Rand1 = rand_uni(2, seed=seed) & qu.pauli('I')
-        Rand2 = rand_uni(2, seed=3*seed) & qu.pauli('I')
+        rand1 = rand_uni(2, seed=seed) & qu.pauli('I')
+        rand2 = rand_uni(2, seed=3*seed) & qu.pauli('I')
 
-        self.psi_init = self.psi_th.gate(Rand1&Rand2, (0,1), contract='swap+split')
+        self.psi_init = self.psi_th.gate(rand1&rand2, (0,1), contract='swap+split')
 
         start = time.time()
 
@@ -155,7 +150,7 @@ class SpinChain:
             for key in self.keys:
                 ob1 = qu.pauli(key[0]) & qu.pauli('I')
                 ob2 = qu.pauli(key[2]) & qu.pauli('I')
-                self.results[key].append((psit.H @ psit.gate_(ob1 & ob2, (0, 1))).real)
+                self.results[key].append((psit.H @ psit.gate(ob1 & ob2, (0, 1))).real)
 
         end = time.time()
         self.verboseprint(f'It took:{int(end - start)}s')
@@ -172,3 +167,111 @@ class SpinChain:
 
             # tried to return dataframe, but array is better
             #return pd.DataFrame(data=self.results, dtype=np.float32)
+
+class SpinChain_ex:
+    '''Class implementing the spin chain with PBC
+    Here the evolution is done in a exact way
+
+    Parameters
+    ----------
+    L : int
+        Length of the spin chain
+    omega : float
+        Rabi frequency
+    beta : float
+        Inverse temperature
+    potential : float
+        Interaction strength between the spins
+    T : float
+        Total time of the evolution
+    dt : float
+        Time step for observable measurement
+    '''
+    def __init__(self, L, omega=1, beta=0.01, potential=0.1, T=10, dt=0.1):
+        # setting th parameters
+        self.L = L
+        self.beta = beta
+        self.vv = potential
+        self.dt = dt
+        self.t = [i for i in np.arange(0, T, dt)]
+
+        self.dims = [2]*L # overall space of L qbits
+
+        I = qu.pauli('I')
+        X = qu.pauli('X')
+        Z = qu.pauli('Z')
+
+        # fisrt I build the operators
+        nn_op = (I + Z)/2 & (I + Z)/2
+
+        # the hamiltonian
+        H_Rabi = sum(qu.ikron(X, self.dims, i) for i in range(L))
+        H_int_b = sum(qu.ikron(nn_op, self.dims, (i, i+1)) for i in range(2, L-1))
+        H_int_s = sum(qu.pkron(nn_op, self.dims, (i, j)) for i,j in zip([L-1,0,1], [0,1,2]))
+
+        self.Hamiltonian = (omega/2)*H_Rabi + potential*H_int_b + potential*H_int_s
+
+        # diagonalization
+        self.e, self.U = la.eig(self.Hamiltonian, isherm=True)
+
+
+    def evolve(self, seed):
+        '''Perform time evolution of the System
+        Parameter
+        ---------
+        seed : int
+            Seed needed for random perturbation of thermal state
+        '''
+
+        # creating the initial conditions
+        rho = qu.gen.states.thermal_state(self.Hamiltonian, self.beta)
+
+        # initial coditions ootained by means of random unitary
+        rand_uni = qu.gen.rand.random_seed_fn(qu.gen.rand.rand_uni)
+        rand1 = rand_uni(2, seed=seed)
+        rand2 = rand_uni(2, seed=3*seed)
+
+        U_rand = qu.ikron(rand1 & rand2, self.dims, (0, 1))
+        rho = U_rand @ rho @ U_rand.H
+
+        # building the observables and result dictionary
+        observables = {}
+        self.results = {}
+        for ob1, ob2 in product(['I', 'X', 'Y', 'Z'], repeat=2):
+            key = ob1 + '1' + ob2 + '2'
+            self.results[key] = []
+            observables[key] = qu.ikron(qu.pauli(ob1)&qu.pauli(ob2), self.dims, (0, 1))
+
+        # dropping the identity
+        observables.pop('I1I2')
+        self.results.pop('I1I2')
+
+        # the actual simulation
+        self.keys = self.results.keys()
+
+        # smarter way to calculate the coherence vector:
+        rho_tilde = np.conj(self.U.T) @ rho @ self.U
+
+        pauli_tilde = {}
+        for key in self.keys:
+            pauli_tilde[key] = np.conj(self.U.T) @ observables[key] @ self.U
+
+        for i in range(len(self.t)):
+            ee = np.exp(-1j*self.e*self.dt*i)  # diagonalized hamiltonian
+            rho_in = ee.reshape(ee.shape[0],1)*rho_tilde*np.conj(ee)
+
+            trace = lambda key: ( (pauli_tilde[key]@rho_in).trace() / rho_tilde.trace()).real
+            for key in self.keys:
+                self.results[key].append(trace(key))
+
+        print('done :)')
+
+    def return_results(self):
+        '''Return the results, which are the evolution of
+        the coherence vector, as a vector of vectors
+        '''
+        if self.results == None:
+            raise Exception('The object have not been evolved jet')
+        else:
+            length = len(self.results['I1X2'])
+            return [[self.results[key][i] for key in self.keys] for i in range(length)]
