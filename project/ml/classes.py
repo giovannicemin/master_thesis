@@ -52,11 +52,43 @@ class MLLP(nn.Module):
     def __init__(self, mlp_params):
         super().__init__()
         self.MLP = exp_LL(**mlp_params)  # multi(=1) layer perceptron
+        self.dt = mlp_params['dt']
 
     def forward(self, x):
         '''Forward step of the model
         '''
         return self.MLP.forward(x)
+
+    def generate_trajectory(self, v_0, T):
+        '''Function that generates the time evolution of
+        the system, namely the trajectory of v(t) coherence
+        vector
+
+        Parameters
+        ----------
+        v_0 : array
+            Initial conditions
+        T : int
+            Total time of the simulation
+
+        Return
+        ------
+        vector of vectors representing the v(t) at each
+        instant of time.
+        '''
+        results = [v_0]
+
+        X = torch.tensor(v_0, dtype=torch.double)
+
+        length = int(T/self.dt)
+
+        for i in range(length-1):
+            with torch.no_grad():
+                y = self.forward(X.float())
+                results.extend([y.numpy()])
+                X = y
+
+        return results
 
     def trace_loss(self, x, recon_x):
         '''Function

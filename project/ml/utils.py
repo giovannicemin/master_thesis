@@ -8,6 +8,36 @@ import getopt
 import sys
 from torch.utils.data.sampler import SubsetRandomSampler
 
+def calculate_error(results_ml, results_tebd, T, dt):
+    '''Function to calculate the error defined as
+    the normalized norm squared of the difference
+    of the two coherence vectors averaged over time
+
+    Perameters
+    ----------
+    results_ml : array
+        Vector of vectors containing the dynamics
+        predicted by the model
+    results_tebd : array
+        Vector of vectors containing the dynamics
+        calculated using TEBD
+    T : int
+        Total time of the dynamics
+    dt : float
+        Time increase
+
+    Return
+    ------
+        Return the error
+    '''
+    integral = 0
+
+    # to do thigs rigth first and last element shoul be *1/2
+    for v_ml, v_tebd in zip(results_ml, results_tebd):
+        integral += (np.linalg.norm(v_ml - v_tebd) / np.linalg.norm(v_tebd) )**2
+
+    return integral * (dt/T)
+
 def get_arch_from_layer_list(input_dim, output_dim, layers):
     ''' Function returning the NN architecture from layer list
     '''
