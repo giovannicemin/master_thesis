@@ -1,0 +1,1 @@
+{'L': 20, 'sites': [0, 1], 'omega': 1, 'beta': [0.001, 0.005, 0.01, 005, 0.1, 0.5, 1, 5, 10], 'potential': [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5], 'potential_': None, 'T': 10, 'dt': 0.01, 'cutoff': 1e-08, 'im_cutoff': 1e-10, 'tolerance': 0.001, 'verbose': True, 'num_traj': 20, 'fname': './data/data_tebd.hdf5'}
