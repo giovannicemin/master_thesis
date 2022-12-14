@@ -12,13 +12,13 @@ import quimb as qu
 from models import SpinChain
 from utils import get_params_from_cmdline
 
-prms = {'L' : 10,                # length of spin chain
+prms = {'L' : 20,                # length of spin chain
         'sites' : [0, 1],        # sites of the subsystem S spins
         'omega' : 1,             # Rabi frequency
         # inverse temperature
-        'beta' : [0.01],# 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10],
+        'beta' : [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10],
         # interaction of subsystem's S spins
-        'potential' : [0.1],#, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5],
+        'potential' : [0.35],#, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5],
         'potential_' : None,     # interaction of bath spins, if None same as potential
         'T' : 10,                # total time for the evolution
         'dt' : 0.01,             # interval every which save the data
@@ -26,9 +26,9 @@ prms = {'L' : 10,                # length of spin chain
         'im_cutoff' : 1e-10,      # cutoff for TEBD algorithm, img t-e
         'tolerance' : 1e-3,      # Trotter tolerance for TEBD algorithm
         'verbose' : True,        # verbosity of the script
-        'num_traj' : 20,         # how many trajectories to do
+        'num_traj' : 1,         # how many trajectories to do
         # file to save the data
-        'fname' : './data/data_tebd.hdf5'
+        'fname' : './data/data_tebd_test.hdf5'
         }
 
 def generate_data(default_params, argv=[1]):
@@ -75,17 +75,17 @@ def generate_data(default_params, argv=[1]):
     print('   -----------------------\n')
 
     # check if the file alreay exists
-    if os.path.isfile(prms['fname']):
-        i = 1
-        fname = prms['fname'][:-5] + '_' + str(i) + '.hdf5'
-        while(os.path.isfile(fname)):
-            i += 1
-            fname = prms['fname'][:-5] + '_' + str(i) + '.hdf5'
-        prms['fname'] = fname
-        print(f'File already exists, saving as {fname}')
-    # saving the txt file with psecifications
-    with open(prms['fname'][:-5]+'.txt', 'w') as f:
-        print(prms, file=f)
+    # if os.path.isfile(prms['fname']):                           #
+    #     i = 1                                                   #
+    #     fname = prms['fname'][:-5] + '_' + str(i) + '.hdf5'     #
+    #     while(os.path.isfile(fname)):                           #
+    #         i += 1                                              #
+    #         fname = prms['fname'][:-5] + '_' + str(i) + '.hdf5' #
+    #     prms['fname'] = fname                                   #
+    #     print(f'File already exists, saving as {fname}')        #
+    # # saving the txt file with psecifications                   #
+    # with open(prms['fname'][:-5]+'.txt', 'w') as f:             #
+    #     print(prms, file=f)                                     #
 
     # system parameters
     sys_prms = prms.copy()
@@ -96,8 +96,8 @@ def generate_data(default_params, argv=[1]):
     sys_prms['verbose'] = False
 
     # create the file
-    file = h5py.File(prms['fname'], 'w')
-    file.close()
+    #file = h5py.File(prms['fname'], 'a')
+    #file.close()
 
     ### ACTUAL GENERATION
     n_simulations = len(prms['potential']) * len(prms['beta'])

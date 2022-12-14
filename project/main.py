@@ -5,13 +5,13 @@ from ml.utils import ensure_empty_dir, load_data
 from ml.core import train, eval
 from sfw.optimizers import Adam
 
-data_gen_params = {'L' : 10,               # length of spin chain
+data_gen_params = {'L' : 20,               # length of spin chain
                   'sites' : [0, 1],        # sites of the subsystem S spins
                    'omega' : 1,             # Rabi frequency
                   # inverse temperature
-                   'beta' : [0.01],#, 0.005, 0.01, 0.05, 0.1],
+                   'beta' : [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10],
                   # interaction of subsystem's S spins
-                   'potential' : [0.1],#, 0.2, 0.3, 0.4, 0.5],
+                   'potential' : [0.3],#, 0.2, 0.3, 0.4, 0.5],
                    'potential_' : None,     # interaction of bath spins, if None same as potential
                    'T' : 10,                # total time for the evolution
                    'dt' : 0.01,             # interval every which save the data
@@ -21,14 +21,14 @@ data_gen_params = {'L' : 10,               # length of spin chain
                    'verbose' : True,        # verbosity of the script
                    'num_traj' : 20,         # how many trajectories to do
                   # file to save the data
-                   'fname' : './data/data_tebd_first.hdf5'
+                   'fname' : './data/data_tebd.hdf5'
                   }
 
 ml_params = {'model_dir': './data/trained_model', # folder where the metadata of the training are stored
              'validation_split' : 0.8,
              'batch_size': 256,
              #'batches_per_epoch': 256,
-             'n_epochs': 40,
+             'n_epochs': 100,
              'device': 'cpu',
              'mlp_params': {
                  'data_dim': 15,
@@ -74,6 +74,7 @@ if __name__ == '__main__':
             name = 'model_L_' + str(prms['L']) + \
                 '_V_' + str(int(potential*1e3)).zfill(4) + \
                 '_beta_' + str(int(beta*1e3)).zfill(4) + \
-                '_dt_' + str(int(prms['dt']*1e3)).zfill(4)
+                '_dt_' + str(int(prms['dt']*1e3)).zfill(4) + \
+                '_T' + str(int(prms['T']))
 
             torch.save(model.state_dict(), './data/trained_model/' + name)
