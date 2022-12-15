@@ -11,7 +11,7 @@ data_gen_params = {'L' : 20,               # length of spin chain
                   # inverse temperature
                    'beta' : [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10],
                   # interaction of subsystem's S spins
-                   'potential' : [0.3],#, 0.2, 0.3, 0.4, 0.5],
+                   'potential' : [0.1, 0.15, 0.2, 0.25, 0.3],
                    'potential_' : None,     # interaction of bath spins, if None same as potential
                    'T' : 10,                # total time for the evolution
                    'dt' : 0.01,             # interval every which save the data
@@ -57,7 +57,7 @@ if __name__ == '__main__':
                                                  ml_params['batch_size'],
                                                  ml_params['validation_split'])
             # create the model
-            model = MLLP(ml_params['mlp_params']).to(ml_params['device'])
+            model = MLLP(ml_params['mlp_params'], beta).to(ml_params['device'])
 
             criterion = torch.nn.MSELoss()
             optimizer = Adam(model.parameters(), lr=0.01)
@@ -65,10 +65,11 @@ if __name__ == '__main__':
 
             # train the model
             train(model, criterion, optimizer, train_loader,
-                  ml_params['n_epochs'], ml_params['device'])
+                  ml_params['n_epochs'], ml_params['device'],
+                  beta)
 
             # eval the model
-            eval(model, criterion, eval_loader, ml_params['device'])
+            eval(model, criterion, eval_loader, ml_params['device'], beta)
 
             # save the model
             name = 'model_L_' + str(prms['L']) + \

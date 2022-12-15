@@ -1,11 +1,12 @@
 '''Where the core operation for the machine learning part are stored.
 '''
 import numpy as np
+import math
 
 from sfw.constraints import create_simplex_constraints
 from ml.utils import ensure_empty_dir
 
-def train(model, criterion, optimizer, train_loader, n_epochs, device):
+def train(model, criterion, optimizer, train_loader, n_epochs, device, beta):
     '''Function to train the model in place
 
     Parameters
@@ -23,6 +24,9 @@ def train(model, criterion, optimizer, train_loader, n_epochs, device):
     device : str
         Device to send the computations
     '''
+    # normalization of the data
+    normalization = 1 - math.e**(-beta/2)
+
     for epoch in range(n_epochs):
         model.train()
         print('= Starting epoch ', epoch, '/', n_epochs)
@@ -34,8 +38,8 @@ def train(model, criterion, optimizer, train_loader, n_epochs, device):
 
             constraints = create_simplex_constraints(model)
 
-            X = batch_in.float().to(device)
-            y = batch_out.float().to(device)
+            X = batch_in.float().to(device)/normalization
+            y = batch_out.float().to(device)/normalization
 
             # set gradients to zero to avoid using old data
             optimizer.zero_grad()
@@ -57,16 +61,19 @@ def train(model, criterion, optimizer, train_loader, n_epochs, device):
 
         print('=== Mean train loss: {:.12f}'.format(summed_train_loss.mean()))
 
-def eval(model, criterion, eval_loader, device):
+def eval(model, criterion, eval_loader, device, beta):
     '''Function to evaluate the model
     '''
+    # normalization of the data
+    normalization = 1 - math.e**(-beta/2)
+
     model.eval()
     summed_eval_loss = np.array([])
 
     for batch_index, (batch_in, batch_out) in enumerate(eval_loader):
 
-        X = batch_in.float().to(device)
-        y = batch_out.float().to(device)
+        X = batch_in.float().to(device)/normalization
+        y = batch_out.float().to(device)/normalization
 
         # apply the model
         recon_y = model.forward(X)

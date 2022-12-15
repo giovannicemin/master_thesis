@@ -4,9 +4,11 @@ are stored.
 import numpy as np
 import pandas as pd
 import torch
+import math
 from torch import nn
 import opt_einsum as oe
 import h5py
+from torch.nn.modules import normalization
 from torch.utils.data.dataset import Dataset
 
 from ml.utils import pauli_s_const, get_arch_from_layer_list
@@ -49,10 +51,14 @@ class MLLP(nn.Module):
         default value torch.nn.MSELoss
     '''
 
-    def __init__(self, mlp_params):
+    def __init__(self, mlp_params, beta):
+        '''Init function
+        Here i need teh temperature to normalize data accordingly
+        '''
         super().__init__()
         self.MLP = exp_LL(**mlp_params)  # multi(=1) layer perceptron
         self.dt = mlp_params['dt']
+        self.normalization = 1 - math.e**(-beta/2)
 
     def forward(self, x):
         '''Forward step of the model
@@ -78,15 +84,15 @@ class MLLP(nn.Module):
         '''
         results = [v_0]
 
-        X = torch.tensor(v_0, dtype=torch.double)
+        X = torch.tensor(v_0/self.normalization, dtype=torch.double)
 
         length = int(T/self.dt)
 
         for i in range(length-1):
             with torch.no_grad():
                 y = self.forward(X.float())
-                results.extend([y.numpy()])
-                X = y
+                X = y.clone()
+                results.extend([y.numpy()*self.normalization])
 
         return results
 
