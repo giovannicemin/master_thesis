@@ -1,0 +1,5 @@
+Data params
+{'L': 20, 'sites': [0, 1], 'omega': 1, 'beta': [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10], 'potential': [0.1, 0.15, 0.2, 0.25, 0.3], 'potential_': None, 'T': 10, 'dt': 0.01, 'cutoff': 1e-08, 'im_cutoff': 1e-10, 'tolerance': 1e-05, 'verbose': True, 'num_traj': 20, 'fname': './data/data_tebd.hdf5'}
+
+Ml params
+{'model_dir': './data/trained_model', 'validation_split': 0.9, 'batch_size': 512, 'n_epochs': 10, 'device': 'cpu', 'mlp_params': {'data_dim': 15, 'layers': [], 'nonlin': 'id', 'output_nonlin': 'id', 'dt': 0.01}}
