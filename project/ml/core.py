@@ -6,7 +6,7 @@ import math
 from sfw.constraints import create_simplex_constraints
 from ml.utils import ensure_empty_dir
 
-def train(model, criterion, optimizer, train_loader, n_epochs, device, beta):
+def train(model, criterion, optimizer, train_loader, n_epochs, device):
     '''Function to train the model in place
 
     Parameters
@@ -24,22 +24,19 @@ def train(model, criterion, optimizer, train_loader, n_epochs, device, beta):
     device : str
         Device to send the computations
     '''
-    # normalization of the data
-    normalization = 1 - math.e**(-beta/2)
-
     for epoch in range(n_epochs):
         model.train()
-        print('= Starting epoch ', epoch, '/', n_epochs)
+        print('= Starting epoch ', epoch+1, '/', n_epochs)
 
         summed_train_loss = np.array([])
 
         # Train
-        for batch_index, (batch_in, batch_out) in enumerate(train_loader):
+        for batch_index, (vv, batch_in, batch_out) in enumerate(train_loader):
 
             constraints = create_simplex_constraints(model)
 
-            X = batch_in.float().to(device)/normalization
-            y = batch_out.float().to(device)/normalization
+            X = batch_in.float().to(device)
+            y = batch_out.float().to(device)
 
             # set gradients to zero to avoid using old data
             optimizer.zero_grad()
@@ -61,19 +58,17 @@ def train(model, criterion, optimizer, train_loader, n_epochs, device, beta):
 
         print('=== Mean train loss: {:.12f}'.format(summed_train_loss.mean()))
 
-def eval(model, criterion, eval_loader, device, beta):
+def eval(model, criterion, eval_loader, device):
     '''Function to evaluate the model
     '''
-    # normalization of the data
-    normalization = 1 - math.e**(-beta/2)
 
     model.eval()
     summed_eval_loss = np.array([])
 
-    for batch_index, (batch_in, batch_out) in enumerate(eval_loader):
+    for batch_index, (vv, batch_in, batch_out) in enumerate(eval_loader):
 
-        X = batch_in.float().to(device)/normalization
-        y = batch_out.float().to(device)/normalization
+        X = batch_in.float().to(device)
+        y = batch_out.float().to(device)
 
         # apply the model
         recon_y = model.forward(X)

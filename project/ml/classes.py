@@ -17,27 +17,42 @@ class CustomDatasetFromHDF5(Dataset):
     '''Class implementing the Dataset object, for
     the data, to the pass to DataLoader. It directly takes
     the data from the hdf5 file
+    NOTE: here I also normalize the data respect to beta!
 
     Parameters
     ----------
     path : str
         Path to where hdf5 file is
-    group : str
-        Group name of the desired data
+    group : array of str
+        Group name or names of the desired data
     '''
 
     def __init__(self, path, group):
         with h5py.File(path, 'r') as f:
-            self.X = f[group + '/X'][()]
-            self.y = f[group + '/y'][()]
+            self.X = []
+            self.y = []
+            self.V = []
+
+            for g in group:
+                # extract beta from the name
+                beta = int(g[24:28])*1e-3
+                normalization = 1 - math.e**(-beta/2)
+
+                self.X.extend(f[g + '/X'][()] / normalization)
+                self.y.extend(f[g + '/y'][()] / normalization)
+
+                # I have to extract the potential from the name
+                # and add a vector of the same length
+                self.V.extend([int(g[14:18])*1e-3]*len(f[g + '/X'][()]))
 
     def __getitem__(self, index):
-        # get the vector at t and t+dt
-        # return as tensors
-        return torch.tensor(self.X[index]), torch.tensor(self.y[index])
+        # return the potential and the vector at t and t+dt
+        # as tensors
+        return torch.tensor(self.V[index]), \
+            torch.tensor(self.X[index]), torch.tensor(self.y[index])
 
     def __len__(self):
-        return self.X.shape[0]
+        return len(self.X)
 
 class MLLP(nn.Module):
     '''Machine learning model to parametrize the Lindbladian operator
@@ -46,26 +61,26 @@ class MLLP(nn.Module):
     ---------
     mlp_params : dict
         Dictionary containing all parameters needed to exp_LL
-    rev_loss_fn : loss function
-        Loss function to employ in the model,
-        default value torch.nn.MSELoss
+    potential : float
+        Potential appearing in the H
     '''
 
-    def __init__(self, mlp_params, beta):
+    def __init__(self, mlp_params):
         '''Init function
-        Here i need teh temperature to normalize data accordingly
+        Here i need the temperature to normalize data accordingly
         '''
         super().__init__()
         self.MLP = exp_LL(**mlp_params)  # multi(=1) layer perceptron
+        #self.MLP = exp_LL_custom_V(**mlp_params)
+
         self.dt = mlp_params['dt']
-        self.normalization = 1 - math.e**(-beta/2)
 
     def forward(self, x):
         '''Forward step of the model
         '''
         return self.MLP.forward(x)
 
-    def generate_trajectory(self, v_0, T):
+    def generate_trajectory(self, v_0, T, beta):
         '''Function that generates the time evolution of
         the system, namely the trajectory of v(t) coherence
         vector
@@ -76,15 +91,18 @@ class MLLP(nn.Module):
             Initial conditions
         T : int
             Total time of the simulation
+        beta : float
+            Inverse temperature of the initial condition
 
         Return
         ------
         vector of vectors representing the v(t) at each
         instant of time.
         '''
+        normalization = 1 - math.e**(-beta/2)
         results = [v_0]
 
-        X = torch.tensor(v_0/self.normalization, dtype=torch.double)
+        X = torch.tensor(v_0/normalization, dtype=torch.double)
 
         length = int(T/self.dt)
 
@@ -92,7 +110,7 @@ class MLLP(nn.Module):
             with torch.no_grad():
                 y = self.forward(X.float())
                 X = y.clone()
-                results.extend([y.numpy()*self.normalization])
+                results.extend([y.numpy()*normalization])
 
         return results
 
@@ -188,6 +206,8 @@ class exp_LL(nn.Module):
         nn.init.uniform_(self.omega, -bound, bound)  # bias init
 
     def forward(self, x):
+        # second argument would be potential but here not needed
+
         # Structure constant for SU(n) are defined
         #
         # We define the real and imaginary part od the Kossakowsky's matrix c.
@@ -222,3 +242,129 @@ class exp_LL(nn.Module):
 
         exp_dt_L = torch.matrix_exp(self.dt*L )
         return torch.add(exp_dt_L[1:,0], x @ torch.transpose(exp_dt_L[1:,1:],0,1))
+
+class exp_LL_custom_V(nn.Module):
+    ''' Custom Liouvillian layer to ensure positivity of the rho.
+    The fact the potential explicitly appear (should) make the
+    model independant of the potential.
+
+    Parameters
+    ----------
+    data_dim : int
+        Dimension of the input data
+    layers : arr
+        Array containing for each layer the number of neurons
+        (can be empty)
+    nonlin : str
+        Activation function of the layer(s)
+    output_nonlin : str
+        Activation function of the output layer
+    dt : float
+        Time step for the input data
+    '''
+
+    def __init__(self, data_dim, layers, nonlin, output_nonlin, dt):
+        super().__init__()
+        self.nonlin = nonlin
+        self.output_nonlin = output_nonlin
+        self.data_dim = data_dim
+        self.dt = dt
+
+        # I want to build a single layer NN
+        self.layers = get_arch_from_layer_list(1, data_dim**2, layers)
+        # ?
+        self.n = int(np.sqrt(data_dim+1))
+        # structure constants
+        self.f, self.d = pauli_s_const()
+
+        # Dissipative parameters v = Re(v) + i Im(v) = x + i y
+        # (v is Z on the notes)
+        v_re = torch.zeros([self.data_dim, self.data_dim],requires_grad=True).float()
+        v_im = torch.zeros([self.data_dim, self.data_dim],requires_grad=True).float()
+        self.v_x = nn.Parameter(v_re)
+        self.v_y = nn.Parameter(v_im)
+
+        # Hamiltonian parameters omega
+        omega = torch.zeros([data_dim])
+        self.omega = nn.Parameter(omega).float()
+        self.omega_int = nn.Parameter(omega).float()
+
+        # initialize omega and v
+        nn.init.kaiming_uniform_(self.v_x, a=1)
+        nn.init.kaiming_uniform_(self.v_y, a=1)
+        # rescaling to avoid too big initial values
+        self.v_x.data = 0.001*self.v_x.data
+        self.v_y.data = 0.001*self.v_y.data
+        fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.v_x)
+        bound = 1. / np.sqrt(fan_in)
+        nn.init.uniform_(self.omega, -bound, bound)  # bias init
+        nn.init.uniform_(self.omega_int, -bound, bound)  # bias init
+
+    def forward(self, x, potential):
+        # at input also the potential appearing in the Hamiltonian
+        #
+        # Structure constant for SU(n) are defined
+        #
+        # We define the real and imaginary part od the Kossakowsky's matrix c.
+        #       +
+        # c = v   v =  ∑  x     x    + y   y    + i ( x   y  - y   x   )
+        #              k    ki   kj     ki  kj         ki  kj   ki  kj
+        c_re = torch.add(torch.einsum('ki,kj->ij', self.v_x, self.v_x),\
+                         torch.einsum('ki,kj->ij', self.v_y, self.v_y)  )
+        c_im = torch.add(torch.einsum('ki,kj->ij', self.v_x, self.v_y),\
+                         -torch.einsum('ki,kj->ij', self.v_y, self.v_x) )
+
+        # Structure constant are employed to massage the parameters omega and v into a completely positive dynamics.
+        # Einsum not optimized in torch: https://optimized-einsum.readthedocs.io/en/stable/
+
+        # dummy index
+        dummy = torch.ones(len(potential))
+
+        # Here I impose the fact c_re is symmetric and c_im antisymmetric
+        re_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.f, c_re )
+        re_2 = -4.*torch.einsum('mik,njk,ij->mn', self.f, self.f, c_re )
+        im_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.d, c_im )
+        im_2 =  4.*torch.einsum('mik,njk,ij->mn', self.f, self.d, c_im )
+        d_super_x_re = torch.add(re_1, re_2 )
+        d_super_x_im = torch.add(im_1, im_2 )
+        d_super_x = torch.add(d_super_x_re, d_super_x_im )
+
+        tr_id = -4.*torch.einsum('imj,ij ->m', self.f, c_im )
+
+        # dissipative part
+        dissipative = torch.zeros(self.data_dim+1, self.data_dim+1)
+        dissipative[1:, 1:] = d_super_x
+        dissipative[1:, 0] = tr_id
+
+        # hamiltonian part
+        h_commutator_x =  4.* torch.einsum('ijk,k->ji', self.f, self.omega)
+        h_commutator_x_int = 4.* torch.einsum('ijk,k->ji', self.f, self.omega_int)
+
+        hamiltonian = torch.zeros(self.data_dim+1, self.data_dim+1)
+        hamiltonian_int = torch.zeros(self.data_dim+1, self.data_dim+1)
+        hamiltonian[1:, 1:] = h_commutator_x
+        hamiltonian_int[1:, 1:] = h_commutator_x_int
+
+        # adding the potential index
+        # L   = id  H   + V  H  + (V^2)  D
+        #  ijk    i  jk    i  jk       i  jk
+        hamiltonian = torch.einsum('i,jk -> ijk', dummy, hamiltonian)
+        hamiltonian_int = torch.einsum('i,jk -> ijk', 100*potential, hamiltonian_int)
+        dissipative = torch.einsum('i,jk -> ijk', potential**2, dissipative)
+
+        # building the Lindbladian operator
+        L = torch.add(hamiltonian, hamiltonian_int)
+        L = torch.add(L, dissipative)
+
+        exp_dt_L = torch.matrix_exp(self.dt*L )
+
+        # x must be 2D
+        if len(x.shape) == 1:
+            x.resize_(1, 15)
+        # have to add identity to x
+        x = torch.cat((torch.ones(x.shape[0], 1), x), 1)
+
+        # calculating the result
+        y = torch.einsum('ikj,ij -> ik', exp_dt_L, x)
+
+        return y[:, 1:]

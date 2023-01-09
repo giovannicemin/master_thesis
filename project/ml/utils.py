@@ -83,17 +83,19 @@ def ensure_empty_dir(directory):
         raise Exception('Model dir not empty!')
 
 def load_data(path, L, beta, potential, dt, batch_size, validation_split):
-    '''Function to load the data from hdf5 file.
-    Reshuffling of data is performed. Then
-    separates train from validation and return the iterables.
+    '''Function to load the NORMALIZED data from hdf5 file.
+    Reshuffling of data is performed. Then separates train
+    from validation and return the iterables.
+    NOTE: this functions takes both beta and potential as arrays
+    in case one wants to have wider training sets.
 
     Parameters
     ----------
     path : str
         Path to the hdf5 file
-    beta : float
+    beta : array
     potential : float
-        Beta and potential to get the right group
+        Array of betas an potentials for the group name
     batch_size : int
     validation_split : float
         Number 0 < .. < 1 which indicates the relative
@@ -106,11 +108,11 @@ def load_data(path, L, beta, potential, dt, batch_size, validation_split):
     # put import here to avoid circular imports
     from ml.classes import CustomDatasetFromHDF5
 
-    # name of the group
-    gname = 'cohVec_L_' + str(L) + \
-        '_V_' + str(int(potential*1e3)).zfill(4) + \
-        '_beta_' + str(int(beta*1e3)).zfill(4) + \
-        '_dt_' + str(int(dt*1e3)).zfill(4)
+    # list of group names
+    gname = ['cohVec_L_' + str(L) + \
+        '_V_' + str(int(p*1e3)).zfill(4) + \
+        '_beta_' + str(int(b*1e3)).zfill(4) + \
+        '_dt_' + str(int(dt*1e3)).zfill(4) for b in beta for p in potential]
 
     dataset = CustomDatasetFromHDF5(path, gname)
 
