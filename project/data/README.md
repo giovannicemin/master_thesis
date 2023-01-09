@@ -1,0 +1,11 @@
+# Data folder
+This folder contains all the data from simulations and training.
+
+### Trained_model_old
+    This contains the models trained on the rescaled data, but this data was generated with a cutoff of 1e-8, which is too small
+    
+### Trained_not_rescaled
+    This folder contains the models trained on data not rescaled, indeed they suck.
+    
+data_tebd_old
+    This is the data used to generate model_old, so the one generated with 1e-8
