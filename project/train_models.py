@@ -24,7 +24,7 @@ data_gen_params = {'L' : 20,               # length of spin chain
                    'fname' : './data/data_training_W.hdf5'
                   }
 
-ml_params = {'model_dir': './data/trained_W', # folder where the metadata of the training are stored
+ml_params = {'model_dir': './data/trained_W/', # folder where the metadata of the training are stored
              'validation_split' : 0.9,
              'batch_size': 256,
              #'batches_per_epoch': 256,
