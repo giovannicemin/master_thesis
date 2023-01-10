@@ -13,7 +13,7 @@ data_gen_params = {'L' : 20,               # length of spin chain
                   # interaction of subsystem's S spins
                    'potential' : [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5],
                    'potential_' : None,     # interaction of bath spins, if None same as potential
-                   'T' : 10,                # total time for the evolution
+                   'T' : 3,                # total time for the evolution
                    'dt' : 0.01,             # interval every which save the data
                    'cutoff' : 1e-5,         # cutoff for TEBD algorithm
                    'im_cutoff' : 1e-10,      # cutoff for TEBD algorithm, img t-e
@@ -59,9 +59,11 @@ if __name__ == '__main__':
 
         # load the data
         train_loader, eval_loader = load_data(prms['fname'], prms['L'], beta, [potential],
-                                             prms['dt'],
-                                             ml_params['batch_size'],
-                                             ml_params['validation_split'])
+                                              prms['dt'], prms['T'],
+                                              prms['num_traj'],
+                                              ml_params['batch_size'],
+                                              ml_params['validation_split'],
+                                              resize=True)
         # create the model
         model = MLLP(ml_params['mlp_params']).to(ml_params['device'])
 
@@ -80,6 +82,6 @@ if __name__ == '__main__':
         name = 'model_L_' + str(prms['L']) + \
             '_V_' + str(int(potential*1e3)).zfill(4) + \
             '_dt_' + str(int(prms['dt']*1e3)).zfill(4) + \
-            '_T' + str(int(prms['T']))
+            '_T' + str(int(prms['T'])).zfill(2)
 
         torch.save(model.state_dict(), ml_params['model_dir'] + name)

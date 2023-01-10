@@ -82,7 +82,8 @@ def ensure_empty_dir(directory):
     if len(os.listdir(directory)) != 0:
         raise Exception('Model dir not empty!')
 
-def load_data(path, L, beta, potential, dt, batch_size, validation_split):
+def load_data(path, L, beta, potential, dt, T_train,
+              num_traj, batch_size, validation_split, resize=False):
     '''Function to load the NORMALIZED data from hdf5 file.
     Reshuffling of data is performed. Then separates train
     from validation and return the iterables.
@@ -96,6 +97,11 @@ def load_data(path, L, beta, potential, dt, batch_size, validation_split):
     beta : array
     potential : float
         Array of betas an potentials for the group name
+    resize : bool
+        To either resize or not based on T
+    T_train : int
+        Time used in the training procedure
+    num_traj : int
     batch_size : int
     validation_split : float
         Number 0 < .. < 1 which indicates the relative
@@ -114,7 +120,7 @@ def load_data(path, L, beta, potential, dt, batch_size, validation_split):
         '_beta_' + str(int(b*1e3)).zfill(4) + \
         '_dt_' + str(int(dt*1e3)).zfill(4) for b in beta for p in potential]
 
-    dataset = CustomDatasetFromHDF5(path, gname)
+    dataset = CustomDatasetFromHDF5(path, gname, T_train, dt, num_traj, resize)
 
     # creating the indeces for training and validation split
     dataset_size = len(dataset)

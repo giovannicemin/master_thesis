@@ -25,9 +25,17 @@ class CustomDatasetFromHDF5(Dataset):
         Path to where hdf5 file is
     group : array of str
         Group name or names of the desired data
+    resize : bool
+        To resize or not the dataset based on T_train
+    T_train : int
+        Max time to reach
+    dt : float
+        Time increment used in data generation
+    num_traj : int
+        Number of trajectories
     '''
 
-    def __init__(self, path, group):
+    def __init__(self, path, group, T_train, dt, num_traj, resize=False):
         with h5py.File(path, 'r') as f:
             self.X = []
             self.y = []
@@ -38,9 +46,26 @@ class CustomDatasetFromHDF5(Dataset):
                 beta = int(g[24:28])*1e-3
                 normalization = 1 - math.e**(-beta/2)
 
-                self.X.extend(f[g + '/X'][()] / normalization)
-                self.y.extend(f[g + '/y'][()] / normalization)
+                if resize:
+                    data_short_X = []
+                    data_short_y = []
 
+                    # calculate how much to include for each traj
+                    tt = int(T_train/dt)
+
+                    for n in range(num_traj):
+                        data_short_X.extend(f[g + '/X'][n*999:n*999+tt])
+                        data_short_y.extend(f[g + '/y'][n*999:n*999+tt])
+
+                    # normalizing and appending
+                    self.X.extend([x/normalization for x in data_short_X])
+                    self.y.extend([y/normalization for y in data_short_y])
+
+                else:
+                    self.X.extend(f[g + '/X'][()] / normalization)
+                    self.y.extend(f[g + '/y'][()] / normalization)
+
+                print(len(self.X))
                 # I have to extract the potential from the name
                 # and add a vector of the same length
                 self.V.extend([int(g[14:18])*1e-3]*len(f[g + '/X'][()]))
