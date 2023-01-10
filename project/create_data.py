@@ -18,7 +18,7 @@ prms = {'L' : 20,                # length of spin chain
         # inverse temperature
         'beta' : [1],
         # interaction of subsystem's S spins
-        'potential' : [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5],
+        'potential' : [0.45, 0.5],
         'potential_' : None,     # interaction of bath spins, if None same as potential
         'T' : 20,                # total time for the evolution
         'dt' : 0.01,             # interval every which save the data

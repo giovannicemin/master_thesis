@@ -13,7 +13,7 @@ data_gen_params = {'L' : 20,               # length of spin chain
                   # interaction of subsystem's S spins
                    'potential' : [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5],
                    'potential_' : None,     # interaction of bath spins, if None same as potential
-                   'T' : 3,                # total time for the evolution
+                   'T' : 10,                # total time for the evolution
                    'dt' : 0.01,             # interval every which save the data
                    'cutoff' : 1e-5,         # cutoff for TEBD algorithm
                    'im_cutoff' : 1e-10,      # cutoff for TEBD algorithm, img t-e
@@ -28,7 +28,7 @@ ml_params = {'model_dir': './data/trained_W/', # folder where the metadata of th
              'validation_split' : 0.9,
              'batch_size': 256,
              #'batches_per_epoch': 256,
-             'n_epochs': 30,
+             'n_epochs': 40,
              'device': 'cpu',
              'mlp_params': {
                  'data_dim': 15,
@@ -63,7 +63,7 @@ if __name__ == '__main__':
                                               prms['num_traj'],
                                               ml_params['batch_size'],
                                               ml_params['validation_split'],
-                                              resize=True)
+                                              resize=False)
         # create the model
         model = MLLP(ml_params['mlp_params']).to(ml_params['device'])
 
