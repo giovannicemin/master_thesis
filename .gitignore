@@ -4,3 +4,4 @@
 /project/__pycache__
 /project/create_data.log
 /project/data/data_tebd_*
+/project/data_training_W.hdf5
