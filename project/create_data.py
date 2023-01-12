@@ -12,23 +12,23 @@ import quimb as qu
 from models import SpinChain
 from utils import get_params_from_cmdline
 
-prms = {'L' : 20,                # length of spin chain
+prms = {'L' : 40,                # length of spin chain
         'sites' : [0, 1],        # sites of the subsystem S spins
         'omega' : 1,             # Rabi frequency
         # inverse temperature
         'beta' : [1],
         # interaction of subsystem's S spins
-        'potential' : [1,2,3,4,5,6,7,8,9,10],
+        'potential' : [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5],
         'potential_' : None,     # interaction of bath spins, if None same as potential
-        'T' : 10,                # total time for the evolution
+        'T' : 4,                # total time for the evolution
         'dt' : 0.01,             # interval every which save the data
         'cutoff' : 1e-5,         # cutoff for TEBD algorithm
         'im_cutoff' : 1e-10,      # cutoff for TEBD algorithm, img t-e
         'tolerance' : 1e-3,      # Trotter tolerance for TEBD algorithm
         'verbose' : True,        # verbosity of the script
-        'num_traj' : 1,         # how many trajectories to do
+        'num_traj' : 30,         # how many trajectories to do
         # file to save the data
-        'fname' : './data/data_test_S.hdf5'
+        'fname' : './data/data_train_W.hdf5'
         }
 
 def generate_data(default_params, argv=[1]):
