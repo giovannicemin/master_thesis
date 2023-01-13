@@ -224,8 +224,8 @@ class exp_LL(nn.Module):
         nn.init.kaiming_uniform_(self.v_x, a=1)
         nn.init.kaiming_uniform_(self.v_y, a=1)
         # rescaling to avoid too big initial values
-        self.v_x.data = 0.001*self.v_x.data
-        self.v_y.data = 0.001*self.v_y.data
+        self.v_x.data = 0.01*self.v_x.data
+        self.v_y.data = 0.01*self.v_y.data
         fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.v_x)
         bound = 1. / np.sqrt(fan_in)
         nn.init.uniform_(self.omega, -bound, bound)  # bias init
@@ -267,6 +267,37 @@ class exp_LL(nn.Module):
 
         exp_dt_L = torch.matrix_exp(self.dt*L )
         return torch.add(exp_dt_L[1:,0], x @ torch.transpose(exp_dt_L[1:,1:],0,1))
+
+    def gap(self):
+        ''' Function that calculate the gap
+        '''
+        c_re = torch.add(torch.einsum('ki,kj->ij', self.v_x, self.v_x),\
+                         torch.einsum('ki,kj->ij', self.v_y, self.v_y)  )
+        c_im = torch.add(torch.einsum('ki,kj->ij', self.v_x, self.v_y),\
+                         -torch.einsum('ki,kj->ij', self.v_y, self.v_x) )
+
+        # Structure constant are employed to massage the parameters omega and v into a completely positive dynamics.
+        # Einsum not optimized in torch: https://optimized-einsum.readthedocs.io/en/stable/
+
+        # Here I impose the fact c_re is symmetric and c_im antisymmetric
+        re_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.f, c_re )
+        re_2 = -4.*torch.einsum('mik,njk,ij->mn', self.f, self.f, c_re )
+        im_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.d, c_im )
+        im_2 =  4.*torch.einsum('mik,njk,ij->mn', self.f, self.d, c_im )
+        d_super_x_re = torch.add(re_1, re_2 )
+        d_super_x_im = torch.add(im_1, im_2 )
+        d_super_x = torch.add(d_super_x_re, d_super_x_im )
+
+        tr_id = -4.*torch.einsum('imj,ij ->m', self.f, c_im )
+
+        h_commutator_x =  4.* torch.einsum('ijk,k->ji', self.f, self.omega)
+
+        # building the Lindbladian operator
+        L = torch.zeros(self.data_dim+1, self.data_dim+1)
+        L[1:,1:] = torch.add(h_commutator_x, d_super_x)
+        L[1:,0] = tr_id
+
+        return torch.diagonal(L, 0)[1].detach().numpy()
 
 class exp_LL_custom_V(nn.Module):
     ''' Custom Liouvillian layer to ensure positivity of the rho.
