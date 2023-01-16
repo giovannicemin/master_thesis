@@ -4,3 +4,5 @@
 /project/__pycache__
 /project/create_data.log
 /project/data/data*
+/project/__*
+/project/ml/__*
