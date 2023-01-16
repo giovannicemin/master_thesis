@@ -139,6 +139,14 @@ class MLLP(nn.Module):
 
         return results
 
+    def calculate_gap(self):
+        '''Calculating the gap
+        '''
+        L = self.get_L()
+
+        return L.diagonalize()
+
+
     def trace_loss(self, x, recon_x):
         '''Function
         '''
@@ -271,33 +279,34 @@ class exp_LL(nn.Module):
     def gap(self):
         ''' Function that calculate the gap
         '''
-        c_re = torch.add(torch.einsum('ki,kj->ij', self.v_x, self.v_x),\
-                         torch.einsum('ki,kj->ij', self.v_y, self.v_y)  )
-        c_im = torch.add(torch.einsum('ki,kj->ij', self.v_x, self.v_y),\
-                         -torch.einsum('ki,kj->ij', self.v_y, self.v_x) )
+        with torch.no_grad():
+            c_re = torch.add(torch.einsum('ki,kj->ij', self.v_x, self.v_x),\
+                             torch.einsum('ki,kj->ij', self.v_y, self.v_y)  )
+            c_im = torch.add(torch.einsum('ki,kj->ij', self.v_x, self.v_y),\
+                             -torch.einsum('ki,kj->ij', self.v_y, self.v_x) )
 
-        # Structure constant are employed to massage the parameters omega and v into a completely positive dynamics.
-        # Einsum not optimized in torch: https://optimized-einsum.readthedocs.io/en/stable/
+            # Structure constant are employed to massage the parameters omega and v into a completely positive dynamics.
+            # Einsum not optimized in torch: https://optimized-einsum.readthedocs.io/en/stable/
 
-        # Here I impose the fact c_re is symmetric and c_im antisymmetric
-        re_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.f, c_re )
-        re_2 = -4.*torch.einsum('mik,njk,ij->mn', self.f, self.f, c_re )
-        im_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.d, c_im )
-        im_2 =  4.*torch.einsum('mik,njk,ij->mn', self.f, self.d, c_im )
-        d_super_x_re = torch.add(re_1, re_2 )
-        d_super_x_im = torch.add(im_1, im_2 )
-        d_super_x = torch.add(d_super_x_re, d_super_x_im )
+            # Here I impose the fact c_re is symmetric and c_im antisymmetric
+            re_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.f, c_re )
+            re_2 = -4.*torch.einsum('mik,njk,ij->mn', self.f, self.f, c_re )
+            im_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.d, c_im )
+            im_2 =  4.*torch.einsum('mik,njk,ij->mn', self.f, self.d, c_im )
+            d_super_x_re = torch.add(re_1, re_2 )
+            d_super_x_im = torch.add(im_1, im_2 )
+            d_super_x = torch.add(d_super_x_re, d_super_x_im )
 
-        tr_id = -4.*torch.einsum('imj,ij ->m', self.f, c_im )
+            tr_id = -4.*torch.einsum('imj,ij ->m', self.f, c_im )
 
-        h_commutator_x =  4.* torch.einsum('ijk,k->ji', self.f, self.omega)
+            h_commutator_x =  4.* torch.einsum('ijk,k->ji', self.f, self.omega)
 
-        # building the Lindbladian operator
-        L = torch.zeros(self.data_dim+1, self.data_dim+1)
-        L[1:,1:] = torch.add(h_commutator_x, d_super_x)
-        L[1:,0] = tr_id
+            # building the Lindbladian operator
+            L = torch.zeros(self.data_dim+1, self.data_dim+1)
+            L[1:,1:] = torch.add(h_commutator_x, d_super_x)
+            L[1:,0] = tr_id
 
-        return torch.diagonal(L, 0)[1].detach().numpy()
+        return torch.diagonal(L, 0).detach().numpy()
 
 class exp_LL_custom_V(nn.Module):
     ''' Custom Liouvillian layer to ensure positivity of the rho.
