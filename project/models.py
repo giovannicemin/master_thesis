@@ -117,13 +117,18 @@ class SpinChain:
 
         self.verboseprint('Performing the time evolution \n')
 
-        # initial coditions ootained by means of random unitary
+        # initial codition obtained by means of a projection
+        # and random unitary
+        sigma_m = qu.pauli('X') - 1j*qu.pauli('Y')
+        projection = sigma_m & qu.pauli('I')
+        psi_tmp = self.psi_th.gate(projection & projection, (0,1), contract='swap+split')
+
         rand_uni = qu.gen.rand.random_seed_fn(qu.gen.rand.rand_uni)
         print('Inside function ')
         rand1 = rand_uni(2, seed=seed) & qu.pauli('I')
         rand2 = rand_uni(2, seed=3*seed) & qu.pauli('I')
 
-        self.psi_init = self.psi_th.gate(rand1&rand2, (0,1), contract='swap+split')
+        self.psi_init = psi_tmp.gate(rand1&rand2, (0,1), contract='swap+split')
 
         start = time.time()
 
