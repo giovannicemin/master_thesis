@@ -13,18 +13,18 @@ Generated 30 trajectories using cutoff 1e-5
 **data_test_W**
 This file contains data needed to test the model for further times, up to T=20
 Generated 1 trajectory, up to T=10 using cutoff 1e-5  (N=20, not V=0.5, I used 10^-6 actually)
-- for N = 20 up to T = 10
-- for N=40, 60 up to T = 4
+- for N = 20,40,60 up to T = 20
     
 **data_training_S**
 This file contains the file needed to train the model for the strong regime.
 Generated 30 trajectories, up to T=5 and using cutoff 1e-5
-- for N = 20
+- for N = 20 up to T = 5
+- for N = 40, 60 up to T = 4 non ancora
 
 **data_test_S**
 This file contains data needed to test the model for further times, up to T=10
 Generated using cutoff 1e-5
-- for N= 20
+- for N = 20 up to  = 10
 
 
 ### Trained_model_old
