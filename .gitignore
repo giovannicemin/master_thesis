@@ -2,7 +2,7 @@
 /NN_Lindblad
 
 # all notebooks checkpoints
-/.ipynb_checkpoints
+*.ipynb_checkpoints/
 
 # just a temp notebook to tweak with things
 /prove_libere.ipynb
