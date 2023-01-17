@@ -12,7 +12,7 @@ import quimb as qu
 from models import SpinChain
 from utils import get_params_from_cmdline
 
-prms = {'L' : 40,                # length of spin chain
+prms = {'L' : 20,                # length of spin chain
         'sites' : [0, 1],        # sites of the subsystem S spins
         'omega' : 1,             # Rabi frequency
         # inverse temperature
@@ -26,9 +26,9 @@ prms = {'L' : 40,                # length of spin chain
         'im_cutoff' : 1e-10,      # cutoff for TEBD algorithm, img t-e
         'tolerance' : 1e-3,      # Trotter tolerance for TEBD algorithm
         'verbose' : True,        # verbosity of the script
-        'num_traj' : 1,         # how many trajectories to do
+        'num_traj' : 30,         # how many trajectories to do
         # file to save the data
-        'fname' : './data/prova.hdf5'
+        'fname' : './data/data_unc_training_W.hdf5'
         }
 
 def generate_data(default_params, argv=[1]):
