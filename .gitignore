@@ -1,8 +1,7 @@
 /NN_Lindblad
 /.ipynb_checkpoints
 /prove_libere.ipynb
-/project/__pycache__
+/project/__pycache__/
+/project/ml/__pycache__/
 /project/create_data.log
 /project/data/data*
-/project/__*
-/project/ml/__*
