@@ -1,7 +1,17 @@
+# the original project
 /NN_Lindblad
+
+# all notebooks checkpoints
 /.ipynb_checkpoints
+
+# just a temp notebook to tweak with things
 /prove_libere.ipynb
+
+# pychaches
 /project/__pycache__/
 /project/ml/__pycache__/
+*.pyc
+
+# data log and data itself (too big)
 /project/create_data.log
 /project/data/data*
