@@ -119,7 +119,7 @@ class SpinChain:
 
         # initial codition obtained by means of a projection
         # and random unitary
-        sigma_m = qu.pauli('X') - 1j*qu.pauli('Y')
+        sigma_m = 0.5*(qu.pauli('X') - 1j*qu.pauli('Y'))
         projection = sigma_m & qu.pauli('I')
         psi_tmp = self.psi_th.gate(projection & projection, (0,1), contract='swap+split')
 
