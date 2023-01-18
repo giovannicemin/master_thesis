@@ -124,7 +124,6 @@ class SpinChain:
         psi_tmp = self.psi_th.gate(projection & projection, (0,1), contract='swap+split')
 
         rand_uni = qu.gen.rand.random_seed_fn(qu.gen.rand.rand_uni)
-        print('Inside function ')
         rand1 = rand_uni(2, seed=seed) & qu.pauli('I')
         rand2 = rand_uni(2, seed=3*seed) & qu.pauli('I')
 
