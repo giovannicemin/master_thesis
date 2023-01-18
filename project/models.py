@@ -224,18 +224,28 @@ class SpinChain_ex:
         self.e, self.U = la.eig(self.Hamiltonian, isherm=True)
 
 
-    def evolve(self, seed):
+    def evolve(self, seed, uncorrelate=True):
         '''Perform time evolution of the System
         Parameter
         ---------
         seed : int
             Seed needed for random perturbation of thermal state
+        uncorrelate : bool
+            Wheather to have uncorrelated initial conditions
         '''
 
         # creating the initial conditions
         rho = qu.gen.states.thermal_state(self.Hamiltonian, self.beta)
 
         # initial coditions ootained by means of random unitary
+        sigma_m = 0.5*(qu.pauli('X') - 1j*qu.pauli('Y'))
+        sigma_p = 0.5*(qu.pauli('X') + 1j*qu.pauli('Y'))
+        P = qu.ikron(sigma_m & sigma_m, self.dims, (0, 1))
+        P_H = qu.ikron(sigma_p & sigma_p, self.dims, (0, 1))
+
+        if uncorrelate:
+            rho = P @ rho @ P_H
+
         rand_uni = qu.gen.rand.random_seed_fn(qu.gen.rand.rand_uni)
         rand1 = rand_uni(2, seed=seed)
         rand2 = rand_uni(2, seed=3*seed)
