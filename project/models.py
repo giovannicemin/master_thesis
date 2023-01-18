@@ -107,12 +107,14 @@ class SpinChain:
             self.psi_th.show()
             print('\n')
 
-    def evolve(self, seed):
+    def evolve(self, seed, uncorrelate=True):
         '''Perform time evolution of the System
         Parameter
         ---------
         seed : int
             Seed needed for random perturbation of thermal state
+        uncorrelate : bool
+            Whether to uncorrelate or not the initial state
         '''
 
         self.verboseprint('Performing the time evolution \n')
@@ -121,7 +123,9 @@ class SpinChain:
         # and random unitary
         sigma_m = 0.5*(qu.pauli('X') - 1j*qu.pauli('Y'))
         projection = sigma_m & qu.pauli('I')
-        psi_tmp = self.psi_th.gate(projection & projection, (0,1), contract='swap+split')
+        if uncorrelate:
+            self.psi_th.gate_(projection & projection, (0,1), contract='swap+split')
+            self.psi_th /= self.psi_th.norm() #normalization
 
         rand_uni = qu.gen.rand.random_seed_fn(qu.gen.rand.rand_uni)
         rand1 = rand_uni(2, seed=seed) & qu.pauli('I')
