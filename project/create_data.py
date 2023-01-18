@@ -18,9 +18,9 @@ prms = {'L' : 20,                # length of spin chain
         # inverse temperature
         'beta' : [1],
         # interaction of subsystem's S spins
-        'potential' : [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5],
+        'potential' : [0.5],
         'potential_' : None,     # interaction of bath spins, if None same as potential
-        'T' : 4,                # total time for the evolution
+        'T' : 10,                # total time for the evolution
         'dt' : 0.01,             # interval every which save the data
         'cutoff' : 1e-5,         # cutoff for TEBD algorithm
         'im_cutoff' : 1e-10,      # cutoff for TEBD algorithm, img t-e
@@ -131,7 +131,6 @@ def generate_data(default_params, argv=[1]):
 
             # random seed
             seed = np.random.randint(420)
-            print(seed)
 
             with multiprocessing.Pool() as pool:
                 # creating the list of inputs for the function
