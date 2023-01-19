@@ -139,13 +139,52 @@ class MLLP(nn.Module):
 
         return results
 
+    def thermal_state(self, v_0, beta):
+        '''Function that runs the time evolution, util the variation
+        on each observable is < 10^-2 over 100 steps.
+        This I consider thermalized
+
+        Parameters
+        ----------
+        v_0 : array
+            Initial conditions
+        beta : float
+            Inverse temperature of the initial condition
+
+        Return
+        ------
+        final coherence vetor and time
+        '''
+        normalization = 1 - math.e**(-beta/2)
+        results = [v_0]
+
+        X = torch.tensor(v_0/normalization, dtype=torch.double)
+
+        # first 100 steps
+        for i in range(101):
+            with torch.no_grad():
+                y = self.forward(X.float())
+                X = y.clone()
+                results.extend([y.numpy()*normalization])
+
+        cont = 99
+        while np.linalg.norm(results[cont] - results[cont-100]) > 1e-2:
+            cont += 1
+            with torch.no_grad():
+                y = self.forward(X.float())
+                X = y.clone()
+                results.extend([y.numpy()*normalization])
+
+        return results[-1], cont*self.dt
+
+
+
     def calculate_gap(self):
         '''Calculating the gap
         '''
         L = self.get_L()
 
         return L.diagonalize()
-
 
     def trace_loss(self, x, recon_x):
         '''Function
