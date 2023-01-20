@@ -143,6 +143,8 @@ class MLLP(nn.Module):
         '''Function that runs the time evolution, util the variation
         on each observable is < 10^-2 over 100 steps.
         This I consider thermalized
+        NOTE: to get the thermal state it is better to look at
+            the eigenvalues.
 
         Parameters
         ----------
@@ -176,15 +178,6 @@ class MLLP(nn.Module):
                 results.extend([y.numpy()*normalization])
 
         return results[-1], cont*self.dt
-
-
-
-    def calculate_gap(self):
-        '''Calculating the gap
-        '''
-        L = self.get_L()
-
-        return L.diagonalize()
 
     def trace_loss(self, x, recon_x):
         '''Function
@@ -315,8 +308,8 @@ class exp_LL(nn.Module):
         exp_dt_L = torch.matrix_exp(self.dt*L )
         return torch.add(exp_dt_L[1:,0], x @ torch.transpose(exp_dt_L[1:,1:],0,1))
 
-    def gap(self):
-        ''' Function that calculate the gap
+    def get_L(self):
+        ''' Function that calculate the Lindbaldian
         '''
         with torch.no_grad():
             c_re = torch.add(torch.einsum('ki,kj->ij', self.v_x, self.v_x),\
@@ -345,7 +338,7 @@ class exp_LL(nn.Module):
             L[1:,1:] = torch.add(h_commutator_x, d_super_x)
             L[1:,0] = tr_id
 
-        return torch.diagonal(L, 0).detach().numpy()
+        return L
 
 class exp_LL_custom_V(nn.Module):
     ''' Custom Liouvillian layer to ensure positivity of the rho.
