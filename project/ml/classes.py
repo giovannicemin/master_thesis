@@ -140,11 +140,8 @@ class MLLP(nn.Module):
         return results
 
     def thermal_state(self, v_0, beta):
-        '''Function that runs the time evolution, util the variation
-        on each observable is < 10^-2 over 100 steps.
+        '''Function that runs the time evolution for 10/gap
         This I consider thermalized
-        NOTE: to get the thermal state it is better to look at
-            the eigenvalues.
 
         Parameters
         ----------
@@ -155,29 +152,31 @@ class MLLP(nn.Module):
 
         Return
         ------
-        final coherence vetor and time
+        final coherence vetor
         '''
         normalization = 1 - math.e**(-beta/2)
-        results = [v_0]
 
-        X = torch.tensor(v_0/normalization, dtype=torch.double)
+        #X = torch.zeros(16, dtype=torch.float)
+        #X[0] = 0.5
+        X = torch.tensor(v_0, dtype=torch.float)
+        X /= normalization
+        #X = torch.tensor(v_0/normalization, dtype=torch.float)
 
-        # first 100 steps
-        for i in range(101):
-            with torch.no_grad():
-                y = self.forward(X.float())
-                X = y.clone()
-                results.extend([y.numpy()*normalization])
+        # get the Lindbladian and the gap
+        Lindblad = self.MLP.get_L()
+        e_val, e_vec = np.linalg.eig(Lindblad)
+        gap = self.MLP.gap()
 
-        cont = 99
-        while np.linalg.norm(results[cont] - results[cont-100]) > 1e-2:
-            cont += 1
-            with torch.no_grad():
-                y = self.forward(X.float())
-                X = y.clone()
-                results.extend([y.numpy()*normalization])
+        # get the exp and apply to X
+        # NOTE: done step by step to avoid numerical errors
+        exp_dt_L = torch.matrix_exp((1./gap)*Lindblad )
 
-        return results[-1], cont*self.dt
+        for i in range(100):
+            X = torch.add(exp_dt_L[1:,0], X @ torch.transpose(exp_dt_L[1:,1:],0,1))
+            #X = torch.matrix_exp( (1./gap)*Lindblad ) @ X
+        #y = torch.add(exp_dt_L[1:,0], X @ torch.transpose(exp_dt_L[1:,1:],0,1))
+
+        return X.detach().numpy()*normalization
 
     def trace_loss(self, x, recon_x):
         '''Function
@@ -339,6 +338,18 @@ class exp_LL(nn.Module):
             L[1:,0] = tr_id
 
         return L
+
+    def gap(self):
+        '''Function to calculate the Lindblad gap,
+        meaning the smallest real part of spectrum in modulus
+        '''
+
+        L = self.get_L()
+        # take the real part of the spectrum
+        e_val = np.linalg.eigvals(L.detach().numpy()).real
+
+        e_val.sort()
+        return np.abs(e_val[-2])
 
 class exp_LL_custom_V(nn.Module):
     ''' Custom Liouvillian layer to ensure positivity of the rho.
