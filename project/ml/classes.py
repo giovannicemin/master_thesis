@@ -8,10 +8,10 @@ import math
 from torch import nn
 import opt_einsum as oe
 import h5py
-from torch.nn.modules import normalization
+#from torch.nn.modules import normalization
 from torch.utils.data.dataset import Dataset
 
-from ml.utils import pauli_s_const, get_arch_from_layer_list
+from ml.utils import pauli_s_const, get_arch_from_layer_list, init_weights
 
 class CustomDatasetFromHDF5(Dataset):
     '''Class implementing the Dataset object, for
@@ -33,18 +33,25 @@ class CustomDatasetFromHDF5(Dataset):
         Time increment used in data generation
     num_traj : int
         Number of trajectories
+    resize : bool
+        To resize the dataset according to T_train
     '''
 
     def __init__(self, path, group, T_train, dt, num_traj, resize=False):
         with h5py.File(path, 'r') as f:
             self.X = []
             self.y = []
+            self.t = []
             self.V = []
 
             for g in group:
                 # extract beta from the name
                 beta = int(g[24:28])*1e-3
+                potential = int(g[14:18])*1e-3
                 normalization = 1 - math.e**(-beta/2)
+                if potential > 1:
+                    # divide the normalization to multiply the data
+                    normalization /= potential**2
 
                 if resize:
                     data_short_X = []
@@ -54,16 +61,23 @@ class CustomDatasetFromHDF5(Dataset):
                     tt = int(T_train/dt)
 
                     for n in range(num_traj):
-                        data_short_X.extend(f[g + '/X'][n*999:n*999+tt])
-                        data_short_y.extend(f[g + '/y'][n*999:n*999+tt])
+                        data_short_X.extend(f[g + '/X'][n*499:n*499+tt])
+                        data_short_y.extend(f[g + '/y'][n*499:n*499+tt])
 
                     # normalizing and appending
                     self.X.extend([x/normalization for x in data_short_X])
                     self.y.extend([y/normalization for y in data_short_y])
+                    # creating the time vector based on T_train
+                    for _ in range(num_traj):
+                        self.t.extend([i*dt for i in range(int(T_train/dt))])
 
                 else:
                     self.X.extend(f[g + '/X'][()] / normalization)
                     self.y.extend(f[g + '/y'][()] / normalization)
+
+                    # creating the time vector based on T_train
+                    for _ in range(num_traj):
+                        self.t.extend([i*dt for i in range(int(T_train/dt) - 1)])
 
                 print(len(self.X))
                 # I have to extract the potential from the name
@@ -73,7 +87,7 @@ class CustomDatasetFromHDF5(Dataset):
     def __getitem__(self, index):
         # return the potential and the vector at t and t+dt
         # as tensors
-        return torch.tensor(self.V[index]), \
+        return torch.tensor(self.V[index]), torch.tensor(self.t[index]), \
             torch.tensor(self.X[index]), torch.tensor(self.y[index])
 
     def __len__(self):
@@ -90,20 +104,24 @@ class MLLP(nn.Module):
         Potential appearing in the H
     '''
 
-    def __init__(self, mlp_params):
+    def __init__(self, mlp_params, potential, time_dependent=False):
         '''Init function
         Here i need the temperature to normalize data accordingly
         '''
         super().__init__()
-        self.MLP = exp_LL(**mlp_params)  # multi(=1) layer perceptron
+        if time_dependent:
+            self.MLP = exp_LL_td(**mlp_params)
+        else:
+            self.MLP = exp_LL(**mlp_params)  # multi(=1) layer perceptron
         #self.MLP = exp_LL_custom_V(**mlp_params)
 
         self.dt = mlp_params['dt']
+        self.potential = potential
 
-    def forward(self, x):
+    def forward(self, t, x):
         '''Forward step of the model
         '''
-        return self.MLP.forward(x)
+        return self.MLP.forward(t, x)
 
     def generate_trajectory(self, v_0, T, beta):
         '''Function that generates the time evolution of
@@ -125,6 +143,8 @@ class MLLP(nn.Module):
         instant of time.
         '''
         normalization = 1 - math.e**(-beta/2)
+        if self.potential > 1:
+            normalization /= self.potential**2
         results = [v_0]
 
         X = torch.tensor(v_0/normalization, dtype=torch.double)
@@ -133,7 +153,7 @@ class MLLP(nn.Module):
 
         for i in range(length-1):
             with torch.no_grad():
-                y = self.forward(X.float())
+                y = self.MLP.predict(torch.Tensor([i*self.dt]), X.float())
                 X = y.clone()
                 results.extend([y.numpy()*normalization])
 
@@ -155,6 +175,8 @@ class MLLP(nn.Module):
         final coherence vetor
         '''
         normalization = 1 - math.e**(-beta/2)
+        if self.potential > 1:
+            normalization /= self.potential**2
 
         #X = torch.zeros(16, dtype=torch.float)
         #X[0] = 0.5
@@ -269,7 +291,7 @@ class exp_LL(nn.Module):
         bound = 1. / np.sqrt(fan_in)
         nn.init.uniform_(self.omega, -bound, bound)  # bias init
 
-    def forward(self, x):
+    def forward(self, _, x):
         # second argument would be potential but here not needed
 
         # Structure constant for SU(n) are defined
@@ -306,6 +328,10 @@ class exp_LL(nn.Module):
 
         exp_dt_L = torch.matrix_exp(self.dt*L )
         return torch.add(exp_dt_L[1:,0], x @ torch.transpose(exp_dt_L[1:,1:],0,1))
+
+    def predict(self, t, x):
+        '''Dummy function for compatibility with exp_LL_td'''
+        return self.forward(t, x)
 
     def get_L(self):
         ''' Function that calculate the Lindbaldian
@@ -351,6 +377,197 @@ class exp_LL(nn.Module):
         e_val.sort()
         return np.abs(e_val[-2])
 
+
+class exp_LL_td(nn.Module):
+    ''' Custom Liouvillian **time-depenent** layer
+    to ensure positivity of the rho
+
+    Parameters
+    ----------
+    data_dim : int
+        Dimension of the input data
+    layers : arr
+        Array containing for each layer the number of neurons
+        (can be empty)
+    nonlin : str
+        Activation function of the layer(s)
+    output_nonlin : str
+        Activation function of the output layer
+    dt : float
+        Time step for the input data
+    '''
+
+    def __init__(self, data_dim, layers, nonlin, output_nonlin, dt):
+        super().__init__()
+        self.nonlin = nonlin
+        self.output_nonlin = output_nonlin
+        self.data_dim = data_dim
+        self.dt = dt
+
+        # I want to build a single layer NN
+        self.layers = get_arch_from_layer_list(1, data_dim**2, layers)
+        # ?
+        self.n = int(np.sqrt(data_dim+1))
+        # structure constants
+        self.f, self.d = pauli_s_const()
+
+        # Dissipative parameters v = Re(v) + i Im(v) = x + i y
+        # (v is Z on the notes)
+        self.v_x_net = nn.Sequential(nn.Linear(1, 4),
+                                     nn.ReLU(),
+                                     nn.Linear(4, 4),
+                                     nn.ReLU(),
+                                     nn.Linear(4, 4),
+                                     nn.Tanh(),
+                                     #nn.Softmin(dim=1),
+                                     #nn.Dropout(p=0.2),
+                                     #nn.Linear(8, 8),
+                                     #nn.LeakyReLU(),
+                                     #nn.Dropout(p=0.2),
+                                     #nn.Linear(512, 512),
+                                     #nn.Softmax(dim=1),
+                                     #nn.Dropout(p=0.2),
+                                     nn.Linear(4, self.data_dim**2)).float()
+        self.v_y_net = nn.Sequential(nn.Linear(1, 4),
+                                     nn.ReLU(),
+                                     nn.Linear(4, 4),
+                                     nn.ReLU(),
+                                     nn.Linear(4, 4),
+                                     nn.Tanh(),
+                                     #nn.Softmin(dim=1),
+                                     #nn.Dropout(p=0.2),
+                                     #nn.Linear(8, 8),
+                                     #nn.LeakyReLU(),
+                                     #nn.Dropout(p=0.2),
+                                     #nn.Linear(512, 512),
+                                     #nn.Softmax(dim=1),
+                                     #nn.Dropout(p=0.2),
+                                     nn.Linear(4, self.data_dim**2)).float()
+
+        # Hamiltonian parameters omega
+        self.omega_net = nn.Sequential(nn.Linear(1, 1),
+                                       nn.Tanh(),
+                                       #nn.Softmax(dim=1),
+                                       #nn.Linear(32, 256),
+                                       #nn.Softmax(dim=1),
+                                       #nn.Dropout(p=0.2),
+                                       #nn.Linear(256, 256),
+                                       #nn.Softmax(dim=1),
+                                       #nn.Dropout(p=0.2),
+                                       #nn.Linear(256, 64),
+                                       #nn.Softmax(dim=1),
+                                       nn.Linear(1, self.data_dim)).float()
+
+        # initialize omega and v
+        self.v_x_net.apply(init_weights)
+        self.v_y_net.apply(init_weights)
+        self.omega_net.apply(init_weights)
+
+        # keeping the biases initialized as the previous case
+        # nn.init.kaiming_uniform_(self.v_x_net, a=1)
+        # nn.init.kaiming_uniform_(self.v_y, a=1)
+        # # rescaling to avoid too big initial values
+        # self.v_x.data = 0.01*self.v_x.data
+        # self.v_y.data = 0.01*self.v_y.data
+        # fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.v_x)
+        # bound = 1. / np.sqrt(fan_in)
+        # nn.init.uniform_(self.omega, -bound, bound)  # bias init
+
+        nn.init.normal_(self.v_x_net[-1].bias, 0.0, 0.01)
+        nn.init.normal_(self.v_y_net[-1].bias, 0.0, 0.01)
+        nn.init.normal_(self.omega_net[-1].bias, 0.0, 0.01)
+
+
+    def forward(self, t, x):
+        batch_size = x.shape[0]
+
+        # making the time tensor the right dimension
+        t.unsqueeze_(1)
+
+        v_x = self.v_x_net(t).reshape(batch_size, self.data_dim, self.data_dim)
+        v_y = self.v_y_net(t).reshape(batch_size, self.data_dim, self.data_dim)
+        omega = self.omega_net(t)
+        #
+        # We define the real and imaginary part od the Kossakowsky's matrix c.
+        #       +
+        # c = v   v =  ∑  x     x    + y   y    + i ( x   y  - y   x   )
+        #              k    ki   kj     ki  kj         ki  kj   ki  kj
+        # NOTE: s index is batch index
+        c_re = torch.add(torch.einsum('ski,skj->sij', v_x, v_x),\
+                         torch.einsum('ski,skj->sij', v_y, v_y)  )
+        c_im = torch.add(torch.einsum('ski,skj->sij', v_x, v_y),\
+                         -torch.einsum('ski,skj->sij', v_y, v_x) )
+
+        # Structure constant are employed to massage the parameters omega and v into a completely positive dynamics.
+        # Einsum not optimized in torch: https://optimized-einsum.readthedocs.io/en/stable/
+
+        # Here I impose the fact c_re is symmetric and c_im antisymmetric
+        re_1 = -4.*torch.einsum('mjk,nik,sij->smn', self.f, self.f, c_re )
+        re_2 = -4.*torch.einsum('mik,njk,sij->smn', self.f, self.f, c_re )
+        im_1 = -4.*torch.einsum('mjk,nik,sij->smn', self.f, self.d, c_im )
+        im_2 =  4.*torch.einsum('mik,njk,sij->smn', self.f, self.d, c_im )
+        d_super_x_re = torch.add(re_1, re_2 )
+        d_super_x_im = torch.add(im_1, im_2 )
+        d_super_x = torch.add(d_super_x_re, d_super_x_im )
+
+        tr_id = -4.*torch.einsum('imj,sij->sm', self.f, c_im )
+
+        h_commutator_x =  4.* torch.einsum('ijk,sk->sji', self.f, omega)
+
+        # building the Lindbladian operator
+        L = torch.zeros(batch_size, self.data_dim+1, self.data_dim+1)
+        L[:, 1:,1:] = torch.add(h_commutator_x, d_super_x)
+        L[:, 1:,0] = tr_id
+
+        exp_dt_L = torch.matrix_exp(self.dt*L )
+        #print( torch.einsum('si,sji->sj', x, torch.transpose(exp_dt_L[:,1:,1:],1,2)).shape )
+        return torch.add(exp_dt_L[:,1:,0], torch.einsum('si,sij->sj', x, torch.transpose(exp_dt_L[:,1:,1:],1,2)))
+
+    def predict(self, t, x):
+        t.unsqueeze_(1)
+        v_x = self.v_x_net(t).reshape(self.data_dim, self.data_dim)
+        v_y = self.v_y_net(t).reshape(self.data_dim, self.data_dim)
+        omega = self.omega_net(t).reshape(self.data_dim)
+
+        # Structure constant for SU(n) are defined
+        #
+        # We define the real and imaginary part od the Kossakowsky's matrix c.
+        #       +
+        # c = v   v =  ∑  x     x    + y   y    + i ( x   y  - y   x   )
+        #              k    ki   kj     ki  kj         ki  kj   ki  kj
+        # NOTE: s index is batch index
+        c_re = torch.add(torch.einsum('ki,kj->ij', v_x, v_x),\
+                         torch.einsum('ki,kj->ij', v_y, v_y)  )
+        c_im = torch.add(torch.einsum('ki,kj->ij', v_x, v_y),\
+                         -torch.einsum('ki,kj->ij', v_y, v_x) )
+
+        # Structure constant are employed to massage the parameters omega and v into a completely positive dynamics.
+        # Einsum not optimized in torch: https://optimized-einsum.readthedocs.io/en/stable/
+
+        # Here I impose the fact c_re is symmetric and c_im antisymmetric
+        re_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.f, c_re )
+        re_2 = -4.*torch.einsum('mik,njk,ij->mn', self.f, self.f, c_re )
+        im_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.d, c_im )
+        im_2 =  4.*torch.einsum('mik,njk,ij->mn', self.f, self.d, c_im )
+        d_super_x_re = torch.add(re_1, re_2 )
+        d_super_x_im = torch.add(im_1, im_2 )
+        d_super_x = torch.add(d_super_x_re, d_super_x_im )
+
+        tr_id = -4.*torch.einsum('imj,ij->m', self.f, c_im )
+
+        h_commutator_x =  4.* torch.einsum('ijk,k->ji', self.f, omega)
+
+        # building the Lindbladian operator
+        L = torch.zeros(self.data_dim+1, self.data_dim+1)
+        L[1:,1:] = torch.add(h_commutator_x, d_super_x)
+        L[1:,0] = tr_id
+
+        exp_dt_L = torch.matrix_exp(self.dt*L )
+        return torch.add(exp_dt_L[1:,0], x @ torch.transpose(exp_dt_L[1:,1:],0,1))
+
+
+
+
 class exp_LL_custom_V(nn.Module):
     ''' Custom Liouvillian layer to ensure positivity of the rho.
     The fact the potential explicitly appear (should) make the
@@ -371,7 +588,7 @@ class exp_LL_custom_V(nn.Module):
         Time step for the input data
     '''
 
-    def __init__(self, data_dim, layers, nonlin, output_nonlin, dt):
+    def __init__(self, data_dim, layers, nonln, output_nonlin, dt):
         super().__init__()
         self.nonlin = nonlin
         self.output_nonlin = output_nonlin

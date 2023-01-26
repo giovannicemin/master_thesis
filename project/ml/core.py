@@ -31,7 +31,7 @@ def train(model, criterion, optimizer, train_loader, n_epochs, device):
         summed_train_loss = np.array([])
 
         # Train
-        for batch_index, (vv, batch_in, batch_out) in enumerate(train_loader):
+        for batch_index, (vv, t, batch_in, batch_out) in enumerate(train_loader):
 
             constraints = create_simplex_constraints(model)
 
@@ -42,7 +42,9 @@ def train(model, criterion, optimizer, train_loader, n_epochs, device):
             optimizer.zero_grad()
 
             # apply the model
-            recon_y = model.forward(X)
+            recon_y = model.forward(t, X)
+            #print(recon_y.shape)
+            #print(y.shape)
 
             # calculate the loss
             loss = criterion(recon_y, y)
@@ -65,13 +67,13 @@ def eval(model, criterion, eval_loader, device):
     model.eval()
     summed_eval_loss = np.array([])
 
-    for batch_index, (vv, batch_in, batch_out) in enumerate(eval_loader):
+    for batch_index, (vv, t, batch_in, batch_out) in enumerate(eval_loader):
 
         X = batch_in.float().to(device)
         y = batch_out.float().to(device)
 
         # apply the model
-        recon_y = model.forward(X)
+        recon_y = model.forward(t, X)
 
         # calculate the loss
         loss = criterion(recon_y, y)

@@ -8,6 +8,15 @@ import getopt
 import sys
 from torch.utils.data.sampler import SubsetRandomSampler
 
+@torch.no_grad()
+def init_weights(m):
+    '''Function to initialize the weights of NN
+    '''
+    if isinstance(m, nn.Linear):
+        nn.init.normal_(m.weight, 0.0, 0.01)
+        nn.init.constant_(m.bias, 0)
+
+
 def calculate_error(results_ml, results_tebd, T, dt):
     '''Function to calculate the error defined as
     the normalized norm squared of the difference
