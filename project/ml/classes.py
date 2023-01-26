@@ -162,6 +162,7 @@ class MLLP(nn.Module):
     def thermal_state(self, v_0, beta):
         '''Function that runs the time evolution for 10/gap
         This I consider thermalized
+        NOTE: works only for the time independent case!
 
         Parameters
         ----------
@@ -565,8 +566,60 @@ class exp_LL_td(nn.Module):
         exp_dt_L = torch.matrix_exp(self.dt*L )
         return torch.add(exp_dt_L[1:,0], x @ torch.transpose(exp_dt_L[1:,1:],0,1))
 
+    def get_L(self, t):
+        '''Function that calculate the Lindbladian
+        '''
+        t.unsqueeze_(1)
+        v_x = self.v_x_net(t).reshape(self.data_dim, self.data_dim)
+        v_y = self.v_y_net(t).reshape(self.data_dim, self.data_dim)
+        omega = self.omega_net(t).reshape(self.data_dim)
 
+        # Structure constant for SU(n) are defined
+        #
+        # We define the real and imaginary part od the Kossakowsky's matrix c.
+        #       +
+        # c = v   v =  ∑  x     x    + y   y    + i ( x   y  - y   x   )
+        #              k    ki   kj     ki  kj         ki  kj   ki  kj
+        # NOTE: s index is batch index
+        c_re = torch.add(torch.einsum('ki,kj->ij', v_x, v_x),\
+                         torch.einsum('ki,kj->ij', v_y, v_y)  )
+        c_im = torch.add(torch.einsum('ki,kj->ij', v_x, v_y),\
+                         -torch.einsum('ki,kj->ij', v_y, v_x) )
 
+        # Structure constant are employed to massage the parameters omega and v into a completely positive dynamics.
+        # Einsum not optimized in torch: https://optimized-einsum.readthedocs.io/en/stable/
+
+        # Here I impose the fact c_re is symmetric and c_im antisymmetric
+        re_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.f, c_re )
+        re_2 = -4.*torch.einsum('mik,njk,ij->mn', self.f, self.f, c_re )
+        im_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.d, c_im )
+        im_2 =  4.*torch.einsum('mik,njk,ij->mn', self.f, self.d, c_im )
+        d_super_x_re = torch.add(re_1, re_2 )
+        d_super_x_im = torch.add(im_1, im_2 )
+        d_super_x = torch.add(d_super_x_re, d_super_x_im )
+
+        tr_id = -4.*torch.einsum('imj,ij->m', self.f, c_im )
+
+        h_commutator_x =  4.* torch.einsum('ijk,k->ji', self.f, omega)
+
+        # building the Lindbladian operator
+        L = torch.zeros(self.data_dim+1, self.data_dim+1)
+        L[1:,1:] = torch.add(h_commutator_x, d_super_x)
+        L[1:,0] = tr_id
+
+        return L
+
+    def gap(self, t):
+        '''Function to calculate the Lindblad gap,
+        meaning the smallest real part of spectrum in modulus
+        '''
+
+        L = self.get_L(t)
+        # take the real part of the spectrum
+        e_val = np.linalg.eigvals(L.detach().numpy()).real
+
+        e_val.sort()
+        return np.abs(e_val[-2])
 
 class exp_LL_custom_V(nn.Module):
     ''' Custom Liouvillian layer to ensure positivity of the rho.
