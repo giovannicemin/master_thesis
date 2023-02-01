@@ -83,9 +83,9 @@ class SpinChain:
               #(L-1, 0): self.vv*N&N} # for safety
         self.H = qtn.LocalHam1D(L=L, H2=H2, H1=H1, cyclic=True)
 
-        # the hamiltonian for the thermalization
-        H1 = {None: O_Rabi, 0:I&I, 1:I&I}
-        H2 = {None: self.vv*N&N, (L-1,0):I&I&I&I, (0,1):I&I&I&I, (1,2):I&I&I&I}
+        # the hamiltonian to thermalize ONLY the bath
+        #H1 = {None: O_Rabi, 0:I&I, 1:I&I}
+        #H2 = {None: self.vv*N&N, (L-1,0):I&I&I&I, (0,1):I&I&I&I, (1,2):I&I&I&I}
               #(L-1, 0): self.vv*N&N} # for safety
         self.H_th = qtn.LocalHam1D(L=L, H2=H2, H1=H1, cyclic=True)
 
