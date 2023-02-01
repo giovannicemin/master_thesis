@@ -12,13 +12,17 @@ import quimb as qu
 from models import SpinChain
 from utils import get_params_from_cmdline
 
+S = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+W = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5]
+SW = W + S
+
 prms = {'L' : 20,                # length of spin chain
         'sites' : [0, 1],        # sites of the subsystem S spins
         'omega' : 1,             # Rabi frequency
         # inverse temperature
         'beta' : [1],
         # interaction of subsystem's S spins
-        'potential' : [0.5],
+        'potential' : W,
         'potential_' : None,     # interaction of bath spins, if None same as potential
         'T' : 10,                # total time for the evolution
         'dt' : 0.01,             # interval every which save the data
@@ -28,7 +32,7 @@ prms = {'L' : 20,                # length of spin chain
         'verbose' : True,        # verbosity of the script
         'num_traj' : 30,         # how many trajectories to do
         # file to save the data
-        'fname' : './data/data_unc_training_W.hdf5'
+        'fname' : './data/data_unc_training.hdf5'
         }
 
 def generate_data(default_params, argv=[1]):
