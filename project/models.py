@@ -59,6 +59,7 @@ class SpinChain:
         self.verboseprint('Building the spin chain MPS: \n')
         B = np.array([1, 0, 0, 1])/np.sqrt(2)
         arrays = [B]*L
+        arrays[0] = np.array([1,0,0,0])
         self.psi = qtn.MPS_product_state(arrays, cyclic=True)#, site_ind_id='s{}')
         if self._verbose:
             self.psi.show()
@@ -76,12 +77,17 @@ class SpinChain:
         O_Rabi = (omega/2)*X & I
         N = (I + Z)/2 & I
 
-        # the hamiltonian
-        H1 = {i: O_Rabi for i in range(L)}
+        # the hamiltonian for the time evolution
+        H1 = {None: O_Rabi}
         H2 = {None: self.vv*N&N}
               #(L-1, 0): self.vv*N&N} # for safety
-
         self.H = qtn.LocalHam1D(L=L, H2=H2, H1=H1, cyclic=True)
+
+        # the hamiltonian for the thermalization
+        H1 = {None: O_Rabi, 0:I&I, 1:I&I}
+        H2 = {None: self.vv*N&N, (L-1,0):I&I&I&I, (0,1):I&I&I&I, (1,2):I&I&I&I}
+              #(L-1, 0): self.vv*N&N} # for safety
+        self.H_th = qtn.LocalHam1D(L=L, H2=H2, H1=H1, cyclic=True)
 
         # results
         self.results = None
@@ -95,7 +101,7 @@ class SpinChain:
         self.verboseprint('Imaginary time evolution \n')
 
         # create the object
-        tebd = qtn.TEBD(self.psi, self.H, imag=True)
+        tebd = qtn.TEBD(self.psi, self.H_th, imag=True)
 
         # cutoff for truncating after each infinitesimal-time operator application
         tebd.split_opts['cutoff'] = self.im_cutoff
@@ -131,7 +137,7 @@ class SpinChain:
         rand1 = rand_uni(2, seed=seed) & qu.pauli('I')
         rand2 = rand_uni(2, seed=3*seed) & qu.pauli('I')
 
-        self.psi_init = psi_tmp.gate(rand1&rand2, (0,1), contract='swap+split')
+        self.psi_init = self.psi_th.gate(rand1&rand2, (0,1), contract='swap+split')
 
         start = time.time()
 
