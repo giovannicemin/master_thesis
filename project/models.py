@@ -5,6 +5,7 @@
 import numpy as np
 import pandas as pd
 import time
+from pandas.io.stata import excessive_string_length_error
 
 import quimb as qu
 import quimb.tensor as qtn
@@ -230,12 +231,21 @@ class SpinChain:
             for j in range(0, self.L):
                 # along each direction I calculate the correlations as:
                 # <sig_{site} sig_{j}> - <sig_{site}> <sig_{j}>
-                cx_j.append((psit.H @ psit.gate(mag_x&mag_x, (site,j), contract='swap+split')).real - \
-                           (psit.H @ psit.gate(mag_x, (site))).real*(psit.H @ psit.gate(mag_x, (j))).real)
-                cy_j.append((psit.H @ psit.gate(mag_y&mag_y, (site,j), contract='swap+split')).real- \
-                           (psit.H @ psit.gate(mag_y, (site))).real*(psit.H @ psit.gate(mag_y, (j))).real)
-                cz_j.append((psit.H @ psit.gate(mag_z&mag_z, (site,j), contract='swap+split')).real- \
-                           (psit.H @ psit.gate(mag_z, (site))).real*(psit.H @ psit.gate(mag_z, (j))).real)
+                psi_H = psit.H
+                corr = (psi_H @ psit.gate(mag_x&mag_x, (site,j), contract='swap+split')).real
+                ex_site = psi_H @ psit.gate(mag_x, site).real
+                ex_j = (psi_H @ psit.gate(mag_x, j)).real
+                cx_j.append( corr - ex_site*ex_j )
+
+                corr = (psi_H @ psit.gate(mag_y&mag_y, (site,j), contract='swap+split')).real
+                ex_site = psi_H @ psit.gate(mag_y, site).real
+                ex_j = (psi_H @ psit.gate(mag_y, j)).real
+                cy_j.append( corr - ex_site*ex_j )
+
+                corr = (psi_H @ psit.gate(mag_z&mag_z, (site,j), contract='swap+split')).real
+                ex_site = psi_H @ psit.gate(mag_z, site).real
+                ex_j = (psi_H @ psit.gate(mag_z, j)).real
+                cz_j.append( corr - ex_site*ex_j )
 
             cx_t_j += [cx_j]
             cy_t_j += [cy_j]
