@@ -2,16 +2,10 @@
 '''File for the data generation of data to
     study the correlations
 '''
-import pandas as pd
-import numpy as np
 import sys
-import os.path
-import multiprocessing
 import h5py
-import quimb as qu
 
 from models import SpinChain
-from utils import get_params_from_cmdline
 
 S = [1, 2, 3, 4, 5, 6, 7, 8, 9]
 W = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5]
@@ -31,9 +25,9 @@ prms = {'L' : [20],              # length of spin chain
         'im_cutoff' : 1e-10,      # cutoff for TEBD algorithm, img t-e
         'tolerance' : 1e-3,      # Trotter tolerance for TEBD algorithm
         'verbose' : True,        # verbosity of the script
-        'num_traj' : 30,         # how many trajectories to do
+        'num_traj' : 1,          # how many trajectories to do
         # file to save the data
-        'fname' : './data/data_unc_training.hdf5'
+        'fname' : './data/data_correlations.hdf5'
         }
 
 def generate_data(default_params, argv=[1]):
@@ -104,7 +98,8 @@ def generate_data(default_params, argv=[1]):
 
             # group name in hdf5 file
             gname = 'correlations_L_' + str(ll) + \
-                '_V_' + str(int(vv*1e3)).zfill(4)
+                '_V_' + str(int(vv*1e3)).zfill(4) + \
+                '_T_' + str(int(sys_prms['T'])).zfill(2)
             # create the subgroup
             subg = file.create_group(gname)
 
