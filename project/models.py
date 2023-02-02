@@ -45,6 +45,7 @@ class SpinChain:
         self.L = L
         self.beta = beta
         self.vv = potential
+        self.T = T
         self.t = [i for i in np.arange(0, T, dt)]
         self.cutoff = cutoff
         self.im_cutoff = im_cutoff
@@ -83,7 +84,7 @@ class SpinChain:
               #(L-1, 0): self.vv*N&N} # for safety
         self.H = qtn.LocalHam1D(L=L, H2=H2, H1=H1, cyclic=True)
 
-        # the hamiltonian to thermalize ONLY the bath
+        # the hamiltonian for the thermalization of the bath ONLY
         #H1 = {None: O_Rabi, 0:I&I, 1:I&I}
         #H2 = {None: self.vv*N&N, (L-1,0):I&I&I&I, (0,1):I&I&I&I, (1,2):I&I&I&I}
               #(L-1, 0): self.vv*N&N} # for safety
@@ -182,6 +183,67 @@ class SpinChain:
 
             # tried to return dataframe, but array is better
             #return pd.DataFrame(data=self.results, dtype=np.float32)
+
+    def calculate_correlations(self, site, step=0.1, seed=0):
+        """Function that calculates the spread of correlations
+        over the spin chain
+        """
+
+        # stuff I need for the data generation
+        I = qu.pauli('I')
+        X = qu.pauli('X')
+        Y = qu.pauli('Y')
+        Z = qu.pauli('Z')
+
+        # observables
+        mag_x = X & I
+        mag_y = Y & I
+        mag_z = Z & I
+        cx_t_j = []  # x-magnetization
+        cy_t_j = []  # y-magnetization
+        cz_t_j = []  # z-magnetization
+
+        # initial codition obtained by means of a projection
+        # and random unitary
+        sigma_m = 0.5*(qu.pauli('X') - 1j*qu.pauli('Y'))
+        projection = sigma_m & qu.pauli('I')
+        self.psi_th.gate_(projection & projection, (0,1), contract='swap+split')
+        self.psi_th /= self.psi_th.norm() #normalization
+
+        rand_uni = qu.gen.rand.random_seed_fn(qu.gen.rand.rand_uni)
+        rand1 = rand_uni(2, seed=seed) & qu.pauli('I')
+        rand2 = rand_uni(2, seed=3*seed) & qu.pauli('I')
+
+        self.psi_init = self.psi_th.gate(rand1&rand2, (0,1), contract='swap+split')
+
+        # create the object
+        tebd = qu.tensor.TEBD(self.psi_init, self.H)
+
+        # cutoff for truncating after each infinitesimal-time operator application
+        tebd.split_opts['cutoff'] = self.cutoff
+
+        for psit in tebd.at_times(np.arange(0, self.T, step), tol=self.tolerance):
+            cx_j = []
+            cy_j = []
+            cz_j = []
+
+            for j in range(0, self.L):
+                # along each direction I calculate the correlations as:
+                # <sig_{site} sig_{j}> - <sig_{site}> <sig_{j}>
+                cx_j.append((psit.H @ psit.gate(mag_x&mag_x, (site,j), contract='swap+split')).real - \
+                           (psit.H @ psit.gate(mag_x, (site))).real*(psit.H @ psit.gate(mag_x, (j))).real)
+                cy_j.append((psit.H @ psit.gate(mag_y&mag_y, (site,j), contract='swap+split')).real- \
+                           (psit.H @ psit.gate(mag_y, (site))).real*(psit.H @ psit.gate(mag_y, (j))).real)
+                cz_j.append((psit.H @ psit.gate(mag_z&mag_z, (site,j), contract='swap+split')).real- \
+                           (psit.H @ psit.gate(mag_z, (site))).real*(psit.H @ psit.gate(mag_z, (j))).real)
+
+            cx_t_j += [cx_j]
+            cy_t_j += [cy_j]
+            cz_t_j += [cz_j]
+
+        return cx_t_j, cy_t_j, cz_t_j
+
+
 
 class SpinChain_ex:
     '''Class implementing the spin chain with PBC
