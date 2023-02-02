@@ -233,17 +233,17 @@ class SpinChain:
                 # <sig_{site} sig_{j}> - <sig_{site}> <sig_{j}>
                 psi_H = psit.H
                 corr = (psi_H @ psit.gate(mag_x&mag_x, (site,j), contract='swap+split')).real
-                ex_site = psi_H @ psit.gate(mag_x, site).real
+                ex_site = (psi_H @ psit.gate(mag_x, site)).real
                 ex_j = (psi_H @ psit.gate(mag_x, j)).real
                 cx_j.append( corr - ex_site*ex_j )
 
                 corr = (psi_H @ psit.gate(mag_y&mag_y, (site,j), contract='swap+split')).real
-                ex_site = psi_H @ psit.gate(mag_y, site).real
+                ex_site = (psi_H @ psit.gate(mag_y, site)).real
                 ex_j = (psi_H @ psit.gate(mag_y, j)).real
                 cy_j.append( corr - ex_site*ex_j )
 
                 corr = (psi_H @ psit.gate(mag_z&mag_z, (site,j), contract='swap+split')).real
-                ex_site = psi_H @ psit.gate(mag_z, site).real
+                ex_site = (psi_H @ psit.gate(mag_z, site)).real
                 ex_j = (psi_H @ psit.gate(mag_z, j)).real
                 cz_j.append( corr - ex_site*ex_j )
 
