@@ -4,13 +4,18 @@
 '''
 import numpy as np
 import pandas as pd
+import torch
 import time
+import math
 from pandas.io.stata import excessive_string_length_error
 
 import quimb as qu
 import quimb.tensor as qtn
 import quimb.linalg.base_linalg as la
 from itertools import product
+from abc import ABC, abstractmethod
+
+from ml.utils import pauli_s_const
 
 
 class SpinChain:
@@ -233,7 +238,7 @@ class SpinChain:
                 # <sig_{site} sig_{j}> - <sig_{site}> <sig_{j}>
                 psi_H = psit.H
                 corr = (psi_H @ psit.gate(mag_x&mag_x, (site,j), contract='swap+split')).real
-                ex_site = (psi_H @ psit.gate(mag_x, site, contract='swap+plit')).real
+                ex_site = (psi_H @ psit.gate(mag_x, site, contract='swap+split')).real
                 ex_j = (psi_H @ psit.gate(mag_x, j, contract='swap+split')).real
                 cx_j.append( corr - ex_site*ex_j )
 
@@ -252,7 +257,6 @@ class SpinChain:
             cz_t_j += [cz_j]
 
         return cx_t_j, cy_t_j, cz_t_j
-
 
 
 class SpinChain_ex:
@@ -372,3 +376,85 @@ class SpinChain_ex:
         else:
             length = len(self.results['I1X2'])
             return [[self.results[key][i] for key in self.keys] for i in range(length)]
+
+
+class Lindbladian(ABC):
+    """Parent class for Lindbladian"""
+
+    def __init__(self, dt=0.01):
+        self.dt = dt
+        self.f, self.d = pauli_s_const()
+
+    @abstractmethod
+    def kossakowski(self, t):
+        pass
+
+    @abstractmethod
+    def omega(self, t):
+        pass
+
+    def get_rates(self, t):
+        kossakowski = self.kossakowski(t)
+        eigenval, _ = np.linalg.eig(kossakowski)
+
+        return np.sort(eigenval)
+
+    def forward(self, t, x):
+
+        re_c = self.kossakowski(t).real
+        im_c = self.kossakowski(t).imag
+
+        # Here I impose the fact c_re is symmetric and c_im antisymmetric
+        re_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.f, re_c )
+        re_2 = -4.*torch.einsum('mik,njk,ij->mn', self.f, self.f, re_c )
+        im_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.d, im_c )
+        im_2 =  4.*torch.einsum('mik,njk,ij->mn', self.f, self.d, im_c )
+        d_super_x_re = torch.add(re_1, re_2 )
+        d_super_x_im = torch.add(im_1, im_2 )
+        d_super_x = torch.add(d_super_x_re, d_super_x_im )
+
+        tr_id = -4.*torch.einsum('imj,ij->m', self.f, im_c )
+
+        h_commutator_x =  4.* torch.einsum('ijk,k->ji', self.f, self.omega(t))
+
+        # building the Lindbladian operator
+        L = torch.zeros(16, 16)
+        L[1:,1:] = torch.add(h_commutator_x, d_super_x)
+        L[1:,0] = tr_id
+
+        exp_dt_L = torch.matrix_exp(self.dt*L )
+        return torch.add(exp_dt_L[1:,0], x @ torch.transpose(exp_dt_L[1:,1:],0,1))
+
+    def generate_trajectory(self, v_0, T, beta=1):
+        '''Function that generates the time evolution of
+        the system, namely the trajectory of v(t) coherence
+        vector
+
+        Parameters
+        ----------
+        v_0 : array
+            Initial conditions
+        T : int
+            Total time of the simulation
+        beta : float
+            Inverse temperature of the initial condition
+
+        Return
+        ------
+        vector of vectors representing the v(t) at each
+        instant of time.
+        '''
+        # I use the same normalization
+        normalization = 1 - math.e**(-beta/2)
+        results = [v_0]
+
+        X = torch.tensor(v_0/normalization, dtype=torch.double)
+
+        length = int(T/self.dt)
+
+        for i in range(length-1):
+            y = self.forward(i*self.dt, X.float())
+            X = y.clone()
+            results.extend([y.numpy()*normalization])
+
+        return results

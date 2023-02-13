@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import math
 from torch import nn
 import os
 from itertools import product
@@ -8,13 +9,125 @@ import getopt
 import sys
 from torch.utils.data.sampler import SubsetRandomSampler
 
+# def custom_pruning_unstructured(module, name, threshold):
+#     """Prunes tensor corresponding to parameter called `name` in `module`
+#     by setting to zero if < threshold
+#     Modifies module in place (and also return the modified module)
+#     by:
+#     1) adding a named buffer called `name+'_mask'` corresponding to the
+#     binary mask applied to the parameter `name` by the pruning method.
+#     The parameter `name` is replaced by its pruned version, while the
+#     original (unpruned) parameter is stored in a new parameter named
+#     `name+'_orig'`.
+
+#     Args:
+#         module (nn.Module): module containing the tensor to prune
+#         name (string): parameter name within `module` on which pruning
+#                 will act.
+
+#     Returns:
+#         module (nn.Module): modified (i.e. pruned) version of the input
+#             module
+
+#     Examples:
+#         >>> m = nn.Linear(3, 4)
+#         >>> custum_pruning_unstructured(m, name='bias')
+#     """
+#     pruning = ThresholdPruning()
+#     print('ciao')
+#     pruning.apply(module, name)
+
+#     return module
+
+# class ThresholdPruning(prune.BasePruningMethod):
+#     PRUNING_TYPE = "unstructured"
+
+#     def __init__(self):
+#         self.threshold = 1e-2
+
+#     def compute_mask(self, tensor, default_mask):
+#         mask = torch.abs(tensor[:, :]) < self.threshold
+#         default_mask[mask] = 0
+#         return default_mask
+#         #return torch.abs(tensor) > self.threshold
+
+class FourierLayer(nn.Module):
+    """ Custom Layer to construct time function starting from
+    the Fourier transform
+
+    Parameters
+    ----------
+    frequencies : array float
+        Init values for the frequencies
+    out_dim : int
+        Dimention of the output
+    threshold : float
+        Threshold for pruning
+    """
+    def __init__(self, frequencies, out_dim:int, threshold:float,
+                 impose_positivity:bool = False):
+        super().__init__()
+        N_freq = len(frequencies)
+        #frequencies = 0.5*torch.ones(N_freq)
+        self.frequencies = nn.Parameter(frequencies, requires_grad=True)
+
+        weights = torch.ones((out_dim, 2*(N_freq)))
+        self.weights = nn.Parameter(weights)
+        bias = torch.Tensor(out_dim)
+        self.bias = nn.Parameter(bias)
+
+        self.out_dim = out_dim
+        self.threshold = threshold
+        self.pos = impose_positivity
+
+        # initialize weights and biases
+        nn.init.kaiming_uniform_(self.weights, a=15) # weight init
+        fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weights)
+        bound = 1 / math.sqrt(fan_in)
+        nn.init.uniform_(self.bias, -bound, bound)  # bias init
+
+    def forward(self, t):
+        F = torch.cat((torch.cos(t*self.frequencies),\
+                       torch.sin(t*self.frequencies)), dim=-1)
+
+        # w -> index for the omega vector
+        # b -> batch index
+        # n -> Fourier decomposition element
+        if len(F.shape) == 2:
+            w = torch.einsum('wn,bn->bw', self.weights, F)
+        else:
+            w = torch.einsum('wn,n->w', self.weights, F)
+
+        if self.pos:
+            return torch.abs(torch.add(w, self.bias))
+        else:
+            return torch.add(w, self.bias)
+
+
+class Snake(nn.Module):
+    def __init__(self, a = 0.5):
+        super().__init__()
+        self.a = torch.nn.Parameter(torch.Tensor([a]))
+
+    def forward(self, x):
+        return 0 - (0.5/self.a)*torch.cos(2.*self.a*x) + 0.5/self.a
+
 @torch.no_grad()
 def init_weights(m):
     '''Function to initialize the weights of NN
     '''
     if isinstance(m, nn.Linear):
-        nn.init.normal_(m.weight, 0.0, 0.01)
-        nn.init.constant_(m.bias, 0)
+        #d = m.weight.shape[0]
+        #nn.init.uniform_(m.weight, -d, d)
+        nn.init.kaiming_uniform_(m.weight, a=5)
+        #m.weight = 0.1*m.weight
+        #fan_in, _ = nn.init._calculate_fan_in_and_fan_out(m.weight)
+        #bound = 1 / np.sqrt(fan_in)
+        #nn.init.uniform_(m.bias, -bound, bound)
+
+        #nn.init.normal_(m.weight, 0, 0.05)
+        #nn.init.constant_(m.bias, 0)
+        #nn.init.uniform_(m.bias, -0.01, 0.01)
 
 
 def calculate_error(results_ml, results_tebd, T, dt):
