@@ -113,6 +113,7 @@ class MLLP(nn.Module):
         super().__init__()
         if time_dependent:
             self.MLP = exp_LL_td_2(**mlp_params)
+            #self.MLP = exp_LL_td_2(**mlp_params)
             #self.MLP = exp_LL_td_plus(**mlp_params)
         else:
             self.MLP = exp_LL(**mlp_params)  # multi(=1) layer perceptron
@@ -630,7 +631,7 @@ class exp_LL_td(nn.Module):
 
 class exp_LL_td_2(nn.Module):
     ''' Custom Liouvillian **time-depenent** layer
-    to ensure positivity of the rho
+    Here the Lindbladian is assumed to be PERIODIC
 
     Parameters
     ----------
@@ -663,53 +664,33 @@ class exp_LL_td_2(nn.Module):
         # frequency
 
         # Dissipative parameters c = u gamma uT
-
-        frequencies = torch.logspace(0, 2, 5)
+        #frequencies = torch.logspace(0, 2, 5)
+        frequencies = torch.Tensor([0.1, 0.5, 1])
         self.gamma_net = FourierLayer(frequencies=frequencies,
                                       out_dim=self.data_dim,
-                                      threshold=1e-3,
+                                      threshold=1e-2,
                                       impose_positivity=True)
-        # self.gamma_net = nn.Sequential(nn.Linear(1, 256, bias=False),
-        #                                Snake(a=4),
-        #                                nn.Linear(256, self.data_dim)).float()
-        # self.gamma_net = nn.Sequential(nn.Linear(1, 8, bias=True),
-        #                                nn.ReLU(),
-        #                                nn.Linear(8, 8, bias=True),
-        #                                nn.ReLU(),
-        #                                nn.Linear(8, 8, bias=True),
-        #                                nn.ReLU(),
-        #                                nn.Linear(8, 8, bias=True),
-        #                                nn.ReLU(),
-        #                                nn.Linear(8, 8, bias=True),
-        #                                nn.ReLU(),
-        #                                nn.Linear(8, 8, bias=True),
-        #                                nn.ReLU(),
-        #                                nn.Linear(8, 8, bias=True),
-        #                                nn.ReLU(),
-        #                                nn.Linear(8, 8, bias=True),
-        #                                nn.ReLU(),
-        #                                nn.Linear(8, self.data_dim),
-        #                                nn.ReLU()).float()
-
-
-
+        self.gamma_normalization = 1#500
 
         u_re = torch.zeros([self.data_dim, self.data_dim],requires_grad=True).float()
         u_im = torch.zeros([self.data_dim, self.data_dim],requires_grad=True).float()
         self.u_re = nn.Parameter(u_re)
         self.u_im = nn.Parameter(u_im)
+        #theta = torch.zeros([self.data_dim, self.data_dim],requires_grad=True).float()
+        #self.theta = nn.Parameter(theta)
 
         nn.init.kaiming_uniform_(self.u_re, a=1)
         nn.init.kaiming_uniform_(self.u_im, a=1)
-
+        #nn.init.kaiming_uniform_(self.theta, a=1)
 
         # Hamiltonian parameters omega
-        frequencies = torch.logspace(0, 2, 7)
+        #frequencies = torch.logspace(0, 2, 7)
+        frequencies = torch.Tensor([0.1, 0.5, 1, 5])
         self.omega_net = FourierLayer(frequencies=frequencies,
-                                      out_dim=self.data_dim, threshold=1e-3)
+                                      out_dim=self.data_dim, threshold=1e-2)
+        self.omega_normalization = 1#10
         #omega = torch.zeros([data_dim])
         #self.omega = nn.Parameter(omega).float()
-
 
     def forward(self, t, x):
         batch_size = x.shape[0]
@@ -719,14 +700,21 @@ class exp_LL_td_2(nn.Module):
 
         u_re = self.u_re
         u_im = self.u_im
-        gamma = self.gamma_net(t)/500
-        omega = self.omega_net(t)/10
-        #
+
+        theta = u_re +1j*u_im + u_re.T -1j*u_im.T
+        u = torch.matrix_exp(1j*theta)
+
+        gamma = self.gamma_net(t)/self.gamma_normalization
+        omega = self.omega_net(t)/self.omega_normalization
+
         # NOTE: s index is batch index
-        c_re = torch.einsum('ij,sj,jl->sil', u_re, gamma, u_re.T) + \
-            torch.einsum('ij,sj,jl->sil', u_im, gamma, u_im.T)
-        c_im = torch.einsum('ij,sj,jl->sil', u_im, gamma, u_re.T) - \
-            torch.einsum('ij,sj,jl->sil', u_re, gamma, u_im.T)
+        # c_re = torch.einsum('ij,sj,jl->sil', u_re, gamma, u_re.T) + \
+        #     torch.einsum('ij,sj,jl->sil', u_im, gamma, u_im.T)
+        # c_im = torch.einsum('ij,sj,jl->sil', u_im, gamma, u_re.T) - \
+        #     torch.einsum('ij,sj,jl->sil', u_re, gamma, u_im.T)
+        c = torch.einsum('ij,sj,jl->sil', u, gamma.type(torch.complex64), u.H)
+        c_re = c.real
+        c_im = c.imag
 
         # Structure constant are employed to massage the parameters omega and v into a completely positive dynamics.
         # Einsum not optimized in torch: https://optimized-einsum.readthedocs.io/en/stable/
@@ -765,8 +753,12 @@ class exp_LL_td_2(nn.Module):
 
         u_re = self.u_re
         u_im = self.u_im
-        gamma = self.gamma_net(t)/500
-        omega = self.omega_net(t)/10
+
+        theta = u_re +1j*u_im + u_re.T -1j*u_im.T
+        u = torch.matrix_exp(1j*theta)
+
+        gamma = self.gamma_net(t)/self.gamma_normalization
+        omega = self.omega_net(t)/self.omega_normalization
 
         # Structure constant for SU(n) are defined
         #
@@ -775,10 +767,13 @@ class exp_LL_td_2(nn.Module):
         # c = v   v =  ∑  x     x    + y   y    + i ( x   y  - y   x   )
         #              k    ki   kj     ki  kj         ki  kj   ki  kj
         # NOTE: s index is batch index
-        c_re = torch.einsum('ij,j,jl->il', u_re, gamma, u_re.T) + \
-            torch.einsum('ij,j,jl->il', u_im, gamma, u_im.T)
-        c_im = torch.einsum('ij,j,jl->il', u_im, gamma, u_re.T) - \
-            torch.einsum('ij,j,jl->il', u_re, gamma, u_im.T)
+        # c_re = torch.einsum('ij,j,jl->il', u_re, gamma, u_re.T) + \
+        #     torch.einsum('ij,j,jl->il', u_im, gamma, u_im.T)
+        # c_im = torch.einsum('ij,j,jl->il', u_im, gamma, u_re.T) - \
+        #     torch.einsum('ij,j,jl->il', u_re, gamma, u_im.T)
+        c = torch.einsum('ij,j,jl->il', u, gamma.type(torch.complex64), u.H)
+        c_re = c.real
+        c_im = c.imag
 
         # Structure constant are employed to massage the parameters omega and v into a completely positive dynamics.
         # Einsum not optimized in torch: https://optimized-einsum.readthedocs.io/en/stable/

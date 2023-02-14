@@ -6,7 +6,7 @@ import torch
 from sfw.constraints import create_simplex_constraints
 
 def train(model, criterion, optimizer, scheduler, train_loader, n_epochs, device,
-          epochs_to_prune):
+          epochs_to_prune, lamda):
     '''Function to train the model in place
 
     Parameters
@@ -25,6 +25,10 @@ def train(model, criterion, optimizer, scheduler, train_loader, n_epochs, device
         Number of epochs
     device : str
         Device to send the computations
+    epochs_to_prune : array
+        At which epochs pruning is done
+    lamda : float
+        Parameter (negative) to multiply the L2 regularization
     '''
     mean_train_loss = []
 
@@ -51,15 +55,19 @@ def train(model, criterion, optimizer, scheduler, train_loader, n_epochs, device
             #print(y.shape)
 
             # calculate the loss
-            loss = criterion(recon_y, y)
-            # regularization
-            u_re = model.MLP.u_re
-            u_im = model.MLP.u_im
-            matrix_1 = torch.mm(u_re, u_re.T) + torch.mm(u_im, u_im.T) - torch.eye(u_re.shape[0])
-            matrix_1 = torch.abs(matrix_1)
-            matrix_2 = torch.mm(u_im, u_re.T) - torch.mm(u_re, u_im.T)
-            matrix_2 = torch.abs(matrix_2)
-            loss += (1e-6)*( torch.sum(matrix_1) + torch.sum(matrix_2) )
+            loss = 1e4*criterion(recon_y, y)
+            # regularization for U to be unitary
+            # u_re = model.MLP.u_re
+            # u_im = model.MLP.u_im
+            # matrix_1 = torch.mm(u_re, u_re.T) + torch.mm(u_im, u_im.T) - torch.eye(u_re.shape[0])
+            # matrix_1 = torch.abs(matrix_1)
+            # matrix_2 = torch.mm(u_im, u_re.T) - torch.mm(u_re, u_im.T)
+            # matrix_2 = torch.abs(matrix_2)
+            # loss += (1e-5)*( torch.sum(matrix_1) + torch.sum(matrix_2) )
+            # L2 regularization
+            norm_weights = torch.norm(model.MLP.omega_net.weights)*\
+                torch.norm(model.MLP.gamma_net.weights)
+            loss /= 1 + lamda*norm_weights
 
             # sum to the loss per epoch
             summed_train_loss = np.append(summed_train_loss, loss.item())
@@ -76,8 +84,19 @@ def train(model, criterion, optimizer, scheduler, train_loader, n_epochs, device
         #if epoch >= epoch_to_prune and epoch%40 == 0:
         if epoch in epochs_to_prune:
             with torch.no_grad():
-                mask = torch.abs(model.MLP.omega_net.weights[:, :]) < model.MLP.omega_net.threshold
-                model.MLP.omega_net.weights[mask] = 0
+                # here I set to 0 the minimum value along each line
+                w = model.MLP.omega_net.weights
+                mask = (w != w.min(dim=-1).values.unsqueeze(-1))
+                model.MLP.omega_net.weights *= mask
+                w = model.MLP.gamma_net.weights
+                mask = (w != w.min(dim=-1).values.unsqueeze(-1))
+                model.MLP.gamma_net.weights *= mask
+
+                # here I set to 0 the values below therehold
+                # mask = torch.abs(model.MLP.omega_net.weights[:, :]) < model.MLP.omega_net.threshold
+                # model.MLP.omega_net.weights[mask] = 0
+                # mask = torch.abs(model.MLP.omega_net.weights[:, :]) < model.MLP.gamma_net.threshold
+                # model.MLP.gamma_net.weights[mask] = 0
                 print('prune')
         #custom_pruning_unstructured(model.MLP.omega_net, 'weights', threshold=1e-2)
 
