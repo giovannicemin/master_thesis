@@ -397,7 +397,7 @@ class Lindbladian(ABC):
         kossakowski = self.kossakowski(t)
         eigenval, _ = np.linalg.eig(kossakowski)
 
-        return np.sort(eigenval)
+        return eigenval
 
     def forward(self, t, x):
 
