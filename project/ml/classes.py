@@ -2,7 +2,6 @@
 are stored.
 '''
 import numpy as np
-import pandas as pd
 import torch
 import math
 from torch import nn
@@ -15,10 +14,16 @@ from ml.utils import pauli_s_const, get_arch_from_layer_list, \
     init_weights, Snake, FourierLayer
 
 class CustomDatasetFromHDF5(Dataset):
-    '''Class implementing the Dataset object, for
-    the data, to the pass to DataLoader. It directly takes
-    the data from the hdf5 file
-    NOTE: here I also normalize the data respect to beta!
+    '''Class implementing the Dataset object from HDF5 file.
+
+    This class loads the data from HDF5 file.
+    NOTE: The data is normalized according to temeprature and potential,
+        noth values are recovered from the group name.
+    The data can be also resized, namely one can extract the data corresponging
+    to shorter training windows.
+
+    This class is implemented such that it can be passed to
+    torch.utils.data.DataLoader.
 
     Parameters
     ----------
@@ -34,6 +39,12 @@ class CustomDatasetFromHDF5(Dataset):
         Number of trajectories
     resize : bool
         To resize the dataset according to T_train
+
+    This class return the following data:
+     - X : input data
+     - y : output data
+     - t : time corresponding to X
+     - V : potential of the system
     '''
 
     def __init__(self, path, group, T_train, dt, num_traj, resize=False):
@@ -44,9 +55,10 @@ class CustomDatasetFromHDF5(Dataset):
             self.V = []
 
             for g in group:
-                # extract beta from the name
+                # extract beta and potential from the name
                 beta = int(g[24:28])*1e-3
                 potential = int(g[14:18])*1e-3
+                # the normalization
                 normalization = 1 - math.e**(-beta/2)
                 if potential > 1:
                     # divide the normalization to multiply the data
@@ -56,9 +68,9 @@ class CustomDatasetFromHDF5(Dataset):
                     data_short_X = []
                     data_short_y = []
 
-                    # have to calculate how long each block is
+                    # have to calculate how long each trajectory is
                     block = int(f[g+'/X'][()].shape[0]/num_traj)
-                    # calculate how much to include for each traj
+                    # calculate how many points to include for each traj
                     tt = int(T_train/dt)
 
                     for n in range(num_traj):
@@ -76,12 +88,11 @@ class CustomDatasetFromHDF5(Dataset):
                     self.X.extend(f[g + '/X'][()] / normalization)
                     self.y.extend(f[g + '/y'][()] / normalization)
 
-
                     # creating the time vector based on T_train
                     for _ in range(num_traj):
                         self.t.extend([i*dt for i in range(int(T_train/dt) - 1)])
 
-                print(len(self.X))
+                print(f"Data points used in the training {len(self.X)}")
                 # I have to extract the potential from the name
                 # and add a vector of the same length
                 self.V.extend([int(g[14:18])*1e-3]*len(f[g + '/X'][()]))
@@ -96,7 +107,7 @@ class CustomDatasetFromHDF5(Dataset):
         return len(self.X)
 
 class MLLP(nn.Module):
-    '''Machine learning model to parametrize the Lindbladian operator
+    '''Machine learning model to parametrize the Lindbladian operator.
 
     Parametes
     ---------
@@ -104,12 +115,11 @@ class MLLP(nn.Module):
         Dictionary containing all parameters needed to exp_LL
     potential : float
         Potential appearing in the H
+    time_dependent = bool, default False
+        Wheter or not to use the time dependent exp_LL
     '''
 
     def __init__(self, mlp_params, potential, time_dependent=False):
-        '''Init function
-        Here i need the temperature to normalize data accordingly
-        '''
         super().__init__()
         if time_dependent:
             self.MLP = exp_LL_td_2(**mlp_params)
@@ -117,6 +127,7 @@ class MLLP(nn.Module):
             #self.MLP = exp_LL_td_plus(**mlp_params)
         else:
             self.MLP = exp_LL(**mlp_params)  # multi(=1) layer perceptron
+
         #self.MLP = exp_LL_custom_V(**mlp_params)
 
         self.dt = mlp_params['dt']
@@ -124,14 +135,14 @@ class MLLP(nn.Module):
         self.td = time_dependent
 
     def forward(self, **kwargs):
-        '''Forward step of the model
-        '''
+        '''Forward step of the model'''
         return self.MLP.forward(**kwargs)
 
     def generate_trajectory(self, v_0, T, beta):
-        '''Function that generates the time evolution of
-        the system, namely the trajectory of v(t) coherence
-        vector
+        '''Function that generates the trajectory v(t).
+
+        Given an initial condition v_0, this function generates the trajectory,
+        namely the time evolution v(t), using the learned model.
 
         Parameters
         ----------
@@ -144,18 +155,18 @@ class MLLP(nn.Module):
 
         Return
         ------
-        vector of vectors representing the v(t) at each
-        instant of time.
+        vector of vectors representing the v(t) at each instant of time.
         '''
+        # calculating the normalization
         normalization = 1 - math.e**(-beta/2)
         if self.potential > 1:
             normalization /= self.potential**2
-        results = [v_0]
 
-        X = torch.tensor(v_0/normalization, dtype=torch.double)
+        X = torch.Tensor(v_0/normalization)
 
         length = int(T/self.dt)
 
+        results = [v_0]
         for i in range(length-1):
             with torch.no_grad():
                 y = self.MLP.predict(torch.Tensor([i*self.dt]), X.float())
@@ -165,8 +176,12 @@ class MLLP(nn.Module):
         return results
 
     def thermal_state(self, v_0, beta):
-        '''Function that runs the time evolution for 10/gap
-        This I consider thermalized
+        '''Function that runs the time evolution up to t = 100/gap.
+
+        This function calculates the time evolution up to 100/gap, ehre I
+        consider the model to be thermalized.
+        The time evolution is done with step = 1/gap in the time-independent
+        case, whereas for the time-dependent case the step is dt.
 
         Parameters
         ----------
@@ -177,29 +192,25 @@ class MLLP(nn.Module):
 
         Return
         ------
-        final coherence vetor
+        Final coherence vetor
         '''
         normalization = 1 - math.e**(-beta/2)
         if self.potential > 1:
             normalization /= self.potential**2
 
-        #X = torch.zeros(16, dtype=torch.float)
-        #X[0] = 0.5
-        X = torch.tensor(v_0, dtype=torch.float)
-        X /= normalization
-        #X = torch.tensor(v_0/normalization, dtype=torch.float)
+        X = torch.Tensor(v_0/normalization).float()
 
         if self.td:
-            # if time dependent, have to do every dt
+            # if time dependent, have to do every dt, since the Lindbladian
+            # is a function of time
             time = 0.0
             gap = 1
 
             while( (time/gap) < 100):
                 Lindblad = self.MLP.get_L(time)
-                # e_val, e_vec = np.linalg.eig(Lindblad.detach().numpy())
                 gap = self.MLP.gap(time)
 
-                exp_dt_L = torch.matrix_exp(self.dt*Lindblad )
+                exp_dt_L = torch.linalg.matrix_exp(self.dt*Lindblad )
                 X = torch.add(exp_dt_L[1:,0], X @ torch.transpose(exp_dt_L[1:,1:],0,1))
 
                 time += self.dt
@@ -207,24 +218,21 @@ class MLLP(nn.Module):
         else: # if not time dependant, things are much easier
             # get the Lindbladian and the gap
             Lindblad = self.MLP.get_L()
-            # e_val, e_vec = np.linalg.eig(Lindblad)
             gap = self.MLP.gap()
 
             # get the exp and apply to X
-            # NOTE: done step by step to avoid numerical errors
-            exp_dt_L = torch.matrix_exp((1./gap)*Lindblad )
+            # NOTE: I did not do a single big step to avoid numerical errors
+            exp_dt_L = torch.linalg.matrix_exp((1./gap)*Lindblad )
 
             for i in range(100):
                 X = torch.add(exp_dt_L[1:,0], X @ torch.transpose(exp_dt_L[1:,1:],0,1))
-                #X = torch.matrix_exp( (1./gap)*Lindblad ) @ X
-            #y = torch.add(exp_dt_L[1:,0], X @ torch.transpose(exp_dt_L[1:,1:],0,1))
 
         print(f'Time {100./gap}')
 
         return X.detach().numpy()*normalization
 
     def trace_loss(self, x, recon_x):
-        '''Function
+        '''Function boh?
         '''
         paulis = torch.tensor([[[1.,0.,0.,0.],
                                 [0.,1.,0.,0.],
@@ -262,7 +270,7 @@ class MLLP(nn.Module):
 
 
 class exp_LL(nn.Module):
-    ''' Custom Liouvillian layer to ensure positivity of the rho
+    '''Custom Liouvillian layer to ensure positivity of the rho.
 
     Parameters
     ----------
@@ -288,8 +296,6 @@ class exp_LL(nn.Module):
 
         # I want to build a single layer NN
         self.layers = get_arch_from_layer_list(1, data_dim**2, layers)
-        # ?
-        self.n = int(np.sqrt(data_dim+1))
         # structure constants
         self.f, self.d = pauli_s_const()
 
@@ -305,18 +311,18 @@ class exp_LL(nn.Module):
         self.omega = nn.Parameter(omega).float()
 
         # initialize omega and v
-        nn.init.kaiming_uniform_(self.v_x, a=1)
-        nn.init.kaiming_uniform_(self.v_y, a=1)
-        # rescaling to avoid too big initial values
-        self.v_x.data = 0.01*self.v_x.data
-        self.v_y.data = 0.01*self.v_y.data
+        nn.init.kaiming_uniform_(self.v_x, a=10)
+        nn.init.kaiming_uniform_(self.v_y, a=10)
         fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.v_x)
         bound = 1. / np.sqrt(fan_in)
         nn.init.uniform_(self.omega, -bound, bound)  # bias init
 
     def forward(self, _, x):
-        # second argument would be potential but here not needed
+        """Forward step of the Layer.
 
+        The second and third inputs are not used, but present for compatibility
+        reasons.
+        """
         # Structure constant for SU(n) are defined
         #
         # We define the real and imaginary part od the Kossakowsky's matrix c.
@@ -357,16 +363,14 @@ class exp_LL(nn.Module):
         return self.forward(t, x)
 
     def get_L(self):
-        ''' Function that calculate the Lindbaldian
+        ''' Function that returns teh Lindbladian learned.
+        (Basically a copy-paste of forward function.)
         '''
         with torch.no_grad():
             c_re = torch.add(torch.einsum('ki,kj->ij', self.v_x, self.v_x),\
                              torch.einsum('ki,kj->ij', self.v_y, self.v_y)  )
             c_im = torch.add(torch.einsum('ki,kj->ij', self.v_x, self.v_y),\
                              -torch.einsum('ki,kj->ij', self.v_y, self.v_x) )
-
-            # Structure constant are employed to massage the parameters omega and v into a completely positive dynamics.
-            # Einsum not optimized in torch: https://optimized-einsum.readthedocs.io/en/stable/
 
             # Here I impose the fact c_re is symmetric and c_im antisymmetric
             re_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.f, c_re )
@@ -389,8 +393,8 @@ class exp_LL(nn.Module):
         return L
 
     def gap(self):
-        '''Function to calculate the Lindblad gap,
-        meaning the smallest real part of spectrum in modulus
+        '''Function to calculate the Lindblad gap, meaning
+        the smallest real part of the modulus of the spectrum.
         '''
 
         L = self.get_L()
@@ -402,8 +406,12 @@ class exp_LL(nn.Module):
 
 
 class exp_LL_td(nn.Module):
-    ''' Custom Liouvillian **time-depenent** layer
-    to ensure positivity of the rho
+    ''' Custom Liouvillian **time-depenent** layer.
+
+    This layer is very similat to exp_LL, but both omega and c are considered
+    as time dependent functions.
+
+    This is just an experiment. This model doesn't really work :(
 
     Parameters
     ----------
@@ -629,9 +637,13 @@ class exp_LL_td(nn.Module):
         e_val.sort()
         return np.abs(e_val[-2])
 
+
 class exp_LL_td_2(nn.Module):
-    ''' Custom Liouvillian **time-depenent** layer
-    Here the Lindbladian is assumed to be PERIODIC
+    ''' Custom Liouvillian **time-depenent** layer.
+
+    In this case the model learns the Fouriere decomposition of omega vector,
+    and the rates. The unitary matrix to obtain the Kossakowski matrix is
+    learned separately.
 
     Parameters
     ----------
@@ -651,58 +663,49 @@ class exp_LL_td_2(nn.Module):
     def __init__(self, data_dim, layers, nonlin, output_nonlin, dt):
         super().__init__()
         self.nonlin = nonlin
-        self.output_nonlin = output_nonlin
         self.data_dim = data_dim
         self.dt = dt
 
-        # I want to build a single layer NN
-        self.layers = get_arch_from_layer_list(1, data_dim**2, layers)
-        # ?
-        self.n = int(np.sqrt(data_dim+1))
         # structure constants
         self.f, self.d = pauli_s_const()
-        # frequency
 
-        # Dissipative parameters c = u gamma uT
-        #frequencies = torch.logspace(0, 2, 5)
-        frequencies = torch.Tensor([0.1, 0.5, 1])
+        # Dissipative matrix is learned as u gamma u^T
+        # where u is a unitary matrix and gamma a diagonal matrix of
+        # time-dependent functions, of which the model learns the Fourier
+        # decomposition.
+        frequencies = torch.Tensor([0.5, 1.5, 5])
         self.gamma_net = FourierLayer(frequencies=frequencies,
                                       out_dim=self.data_dim,
                                       threshold=1e-2,
                                       impose_positivity=True)
         self.gamma_normalization = 1#500
 
+        # the model learn separately the real and complex part of the matrix at
+        # the exponent
         u_re = torch.zeros([self.data_dim, self.data_dim],requires_grad=True).float()
         u_im = torch.zeros([self.data_dim, self.data_dim],requires_grad=True).float()
         self.u_re = nn.Parameter(u_re)
         self.u_im = nn.Parameter(u_im)
-        #theta = torch.zeros([self.data_dim, self.data_dim],requires_grad=True).float()
-        #self.theta = nn.Parameter(theta)
 
         nn.init.kaiming_uniform_(self.u_re, a=1)
         nn.init.kaiming_uniform_(self.u_im, a=1)
-        #nn.init.kaiming_uniform_(self.theta, a=1)
 
-        # Hamiltonian parameters omega
-        #frequencies = torch.logspace(0, 2, 7)
-        frequencies = torch.Tensor([0.1, 0.5, 1, 5])
+        # Hamiltonian parameters omega, also this is a vector of time-dependent
+        # functions.
+        frequencies = torch.Tensor([0.5, 1.5, 5])
         self.omega_net = FourierLayer(frequencies=frequencies,
                                       out_dim=self.data_dim, threshold=1e-2)
         self.omega_normalization = 1#10
-        #omega = torch.zeros([data_dim])
-        #self.omega = nn.Parameter(omega).float()
 
     def forward(self, t, x):
+        """Forward step of the model. """
         batch_size = x.shape[0]
-
-        # making the time tensor the right dimension
-        t.unsqueeze_(1)
 
         u_re = self.u_re
         u_im = self.u_im
 
         theta = u_re +1j*u_im + u_re.T -1j*u_im.T
-        u = torch.matrix_exp(1j*theta)
+        u = torch.linalg.matrix_exp(1j*theta)
 
         gamma = self.gamma_net(t)/self.gamma_normalization
         omega = self.omega_net(t)/self.omega_normalization
@@ -715,9 +718,6 @@ class exp_LL_td_2(nn.Module):
         c = torch.einsum('ij,sj,jl->sil', u, gamma.type(torch.complex64), u.H)
         c_re = c.real
         c_im = c.imag
-
-        # Structure constant are employed to massage the parameters omega and v into a completely positive dynamics.
-        # Einsum not optimized in torch: https://optimized-einsum.readthedocs.io/en/stable/
 
         # Here I impose the fact c_re is symmetric and c_im antisymmetric
         re_1 = -4.*torch.einsum('mjk,nik,sij->smn', self.f, self.f, c_re )
@@ -742,14 +742,17 @@ class exp_LL_td_2(nn.Module):
         return torch.add(exp_dt_L[:,1:,0], torch.einsum('si,sij->sj', x, torch.transpose(exp_dt_L[:,1:,1:],1,2)))
 
     def get_omega(self, t):
+        """Function returning the omega vector. """
         t = torch.Tensor([t])
-        return self.omega_net(t).detach().numpy()
+        return self.omega_net(t).squeeze().detach().numpy()
 
     def get_rates(self, t):
+        """Function returning the gamma vector. """
         t = torch.Tensor([t])
-        return self.gamma_net(t).detach().numpy()
+        return self.gamma_net(t).squeeze().detach().numpy()
 
     def predict(self, t, x):
+        """Same function as forward, but works sithout batch dimension. """
 
         u_re = self.u_re
         u_im = self.u_im
@@ -757,26 +760,13 @@ class exp_LL_td_2(nn.Module):
         theta = u_re +1j*u_im + u_re.T -1j*u_im.T
         u = torch.matrix_exp(1j*theta)
 
-        gamma = self.gamma_net(t)/self.gamma_normalization
-        omega = self.omega_net(t)/self.omega_normalization
+        gamma = self.gamma_net(t).squeeze()/self.gamma_normalization
+        omega = self.omega_net(t).squeeze()/self.omega_normalization
 
-        # Structure constant for SU(n) are defined
-        #
-        # We define the real and imaginary part od the Kossakowsky's matrix c.
-        #       +
-        # c = v   v =  ∑  x     x    + y   y    + i ( x   y  - y   x   )
-        #              k    ki   kj     ki  kj         ki  kj   ki  kj
         # NOTE: s index is batch index
-        # c_re = torch.einsum('ij,j,jl->il', u_re, gamma, u_re.T) + \
-        #     torch.einsum('ij,j,jl->il', u_im, gamma, u_im.T)
-        # c_im = torch.einsum('ij,j,jl->il', u_im, gamma, u_re.T) - \
-        #     torch.einsum('ij,j,jl->il', u_re, gamma, u_im.T)
         c = torch.einsum('ij,j,jl->il', u, gamma.type(torch.complex64), u.H)
         c_re = c.real
         c_im = c.imag
-
-        # Structure constant are employed to massage the parameters omega and v into a completely positive dynamics.
-        # Einsum not optimized in torch: https://optimized-einsum.readthedocs.io/en/stable/
 
         # Here I impose the fact c_re is symmetric and c_im antisymmetric
         re_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.f, c_re )
@@ -800,28 +790,21 @@ class exp_LL_td_2(nn.Module):
         return torch.add(exp_dt_L[1:,0], x @ torch.transpose(exp_dt_L[1:,1:],0,1))
 
     def get_L(self, t):
-        '''Function that calculate the Lindbladian
-        '''
+        '''Function that calculate the Lindbladian. '''
         with torch.no_grad():
-            t = torch.Tensor([t])
-            v_x = self.v_x_net(t).reshape(self.data_dim, self.data_dim)
-            v_y = self.v_y_net(t).reshape(self.data_dim, self.data_dim)
-            omega = self.omega_net(t).reshape(self.data_dim)
+            u_re = self.u_re
+            u_im = self.u_im
 
-            # Structure constant for SU(n) are defined
-            #
-            # We define the real and imaginary part od the Kossakowsky's matrix c.
-            #       +
-            # c = v   v =  ∑  x     x    + y   y    + i ( x   y  - y   x   )
-            #              k    ki   kj     ki  kj         ki  kj   ki  kj
+            theta = u_re +1j*u_im + u_re.T -1j*u_im.T
+            u = torch.matrix_exp(1j*theta)
+
+            gamma = self.gamma_net(t).squeeze()/self.gamma_normalization
+            omega = self.omega_net(t).squeeze()/self.omega_normalization
+
             # NOTE: s index is batch index
-            c_re = torch.add(torch.einsum('ki,kj->ij', v_x, v_x),\
-                             torch.einsum('ki,kj->ij', v_y, v_y)  )
-            c_im = torch.add(torch.einsum('ki,kj->ij', v_x, v_y),\
-                             -torch.einsum('ki,kj->ij', v_y, v_x) )
-
-            # Structure constant are employed to massage the parameters omega and v into a completely positive dynamics.
-            # Einsum not optimized in torch: https://optimized-einsum.readthedocs.io/en/stable/
+            c = torch.einsum('ij,j,jl->il', u, gamma.type(torch.complex64), u.H)
+            c_re = c.real
+            c_im = c.imag
 
             # Here I impose the fact c_re is symmetric and c_im antisymmetric
             re_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.f, c_re )
@@ -847,7 +830,6 @@ class exp_LL_td_2(nn.Module):
         '''Function to calculate the Lindblad gap,
         meaning the smallest real part of spectrum in modulus
         '''
-
         L = self.get_L(t)
         # take the real part of the spectrum
         e_val = np.linalg.eigvals(L.detach().numpy()).real

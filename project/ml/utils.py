@@ -53,7 +53,14 @@ from torch.utils.data.sampler import SubsetRandomSampler
 
 class FourierLayer(nn.Module):
     """ Custom Layer to construct time function starting from
-    the Fourier transform
+    the Fourier transform.
+
+    For each output the model learns the 0 frequency (const) term
+    and the real anc complex part for each frequency in input.
+    Note the frequencies are learnable parameters!
+
+    Because of the use of periodic functions the learning procedure of this
+    model is really delicate, and the risk of ending in a local minima very high.
 
     Parameters
     ----------
@@ -63,45 +70,48 @@ class FourierLayer(nn.Module):
         Dimention of the output
     threshold : float
         Threshold for pruning
+    impose_positivity : bool
+        Whether or not to have a >=0 output.
     """
     def __init__(self, frequencies, out_dim:int, threshold:float,
                  impose_positivity:bool = False):
         super().__init__()
-        N_freq = len(frequencies)
-        #frequencies = 0.5*torch.ones(N_freq)
+        N_freq = len(frequencies)+1
+
+        # create different set of frequencies for each output
+        frequencies = frequencies.repeat(out_dim, 1)
         self.frequencies = nn.Parameter(frequencies, requires_grad=True)
 
         weights = torch.ones((out_dim, 2*(N_freq)))
         self.weights = nn.Parameter(weights)
-        bias = torch.Tensor(out_dim)
-        self.bias = nn.Parameter(bias)
 
         self.out_dim = out_dim
         self.threshold = threshold
         self.pos = impose_positivity
 
-        # initialize weights and biases
+        # initialize weights
         nn.init.kaiming_uniform_(self.weights, a=15) # weight init
         fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weights)
-        bound = 1 / math.sqrt(fan_in)
-        nn.init.uniform_(self.bias, -bound, bound)  # bias init
 
     def forward(self, t):
-        F = torch.cat((torch.cos(t*self.frequencies),\
-                       torch.sin(t*self.frequencies)), dim=-1)
+        # bound the frequencies
+        frequencies = self.frequencies.clamp(1e-3, 100)
+        # add the 0 frequency term
+        frequencies = torch.cat((frequencies,
+                                 torch.zeros(self.out_dim).unsqueeze_(1)), dim=1)
+        t_f_product = torch.einsum('b,wf -> bwf', t, frequencies)
+        F = torch.cat((torch.cos(t_f_product),\
+                       torch.sin(t_f_product)), dim=-1)
 
-        # w -> index for the omega vector
+        # w -> index for the output vector
         # b -> batch index
         # n -> Fourier decomposition element
-        if len(F.shape) == 2:
-            w = torch.einsum('wn,bn->bw', self.weights, F)
-        else:
-            w = torch.einsum('wn,n->w', self.weights, F)
+        w = torch.einsum('wn,bwn->bw', self.weights, F)
 
         if self.pos:
-            return torch.abs(torch.add(w, self.bias))
+            return torch.abs(w)
         else:
-            return torch.add(w, self.bias)
+            return w
 
 
 class Snake(nn.Module):
