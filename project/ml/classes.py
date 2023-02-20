@@ -2,6 +2,7 @@
 are stored.
 '''
 import numpy as np
+import quimb as qu
 import torch
 import math
 from torch import nn
@@ -105,6 +106,7 @@ class CustomDatasetFromHDF5(Dataset):
 
     def __len__(self):
         return len(self.X)
+
 
 class MLLP(nn.Module):
     '''Machine learning model to parametrize the Lindbladian operator.
@@ -408,7 +410,7 @@ class exp_LL(nn.Module):
 class exp_LL_td(nn.Module):
     ''' Custom Liouvillian **time-depenent** layer.
 
-    This layer is very similat to exp_LL, but both omega and c are considered
+    This layer is very similar to exp_LL, but both omega and c are considered
     as time dependent functions.
 
     This is just an experiment. This model doesn't really work :(
@@ -673,11 +675,12 @@ class exp_LL_td_2(nn.Module):
         # where u is a unitary matrix and gamma a diagonal matrix of
         # time-dependent functions, of which the model learns the Fourier
         # decomposition.
-        frequencies = torch.Tensor([0.5, 1.5, 5])
-        self.gamma_net = FourierLayer(frequencies=frequencies,
-                                      out_dim=self.data_dim,
-                                      threshold=1e-2,
-                                      impose_positivity=True)
+        frequencies = torch.Tensor([0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5])
+        #frequencies = torch.Tensor([1.5])
+        self.gamma_net = nn.Sequential(FourierLayer(frequencies=frequencies,
+                                                    out_dim=self.data_dim,
+                                                    threshold=1e-2),
+                                       nn.ReLU())
         self.gamma_normalization = 1#500
 
         # the model learn separately the real and complex part of the matrix at
@@ -687,12 +690,13 @@ class exp_LL_td_2(nn.Module):
         self.u_re = nn.Parameter(u_re)
         self.u_im = nn.Parameter(u_im)
 
-        nn.init.kaiming_uniform_(self.u_re, a=1)
-        nn.init.kaiming_uniform_(self.u_im, a=1)
+        nn.init.kaiming_uniform_(self.u_re, a=10)
+        nn.init.kaiming_uniform_(self.u_im, a=10)
 
         # Hamiltonian parameters omega, also this is a vector of time-dependent
         # functions.
-        frequencies = torch.Tensor([0.5, 1.5, 5])
+        #frequencies = torch.Tensor([0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5])
+        #frequencies = torch.Tensor([1.5])
         self.omega_net = FourierLayer(frequencies=frequencies,
                                       out_dim=self.data_dim, threshold=1e-2)
         self.omega_normalization = 1#10
@@ -704,7 +708,7 @@ class exp_LL_td_2(nn.Module):
         u_re = self.u_re
         u_im = self.u_im
 
-        theta = u_re +1j*u_im + u_re.T -1j*u_im.T
+        theta = u_re + 1j*u_im + u_re.T - 1j*u_im.T
         u = torch.linalg.matrix_exp(1j*theta)
 
         gamma = self.gamma_net(t)/self.gamma_normalization

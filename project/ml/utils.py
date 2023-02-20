@@ -51,6 +51,64 @@ from torch.utils.data.sampler import SubsetRandomSampler
 #         return default_mask
 #         #return torch.abs(tensor) > self.threshold
 
+class SinusoidalLayer(nn.Module):
+    """ Custom Layer implementing sinusoids linear combination.
+
+
+    """
+    def __init__(self, T, m) -> None:
+        super().__init__()
+        self.m = m
+
+        self.frequency = 2*torch.pi/T
+
+        amplitude = torch.ones(m)
+        self.amplitude = nn.Parameter(amplitude)
+
+        phase = torch.zeros(m)
+        self.phase = nn.Parameter(phase)
+
+        const = torch.zeros(m)
+        self.const = nn.Parameter(const)
+
+        # init
+        nn.init.uniform_(self.amplitude, 0.1)
+
+    def forward(self, t):
+        batch_size = t.shape
+
+        # i -> index for the output vector
+        # b -> batch index
+
+        # putting everything in the right dimension
+        t_f_product = (t*self.frequency).unsqueeze(1)
+        t_f_product = t_f_product.repeat(self.m, 1)
+        phase = self.phase.unsqueeze(0).repeat(batch_size, 0)
+
+        p_function = torch.cos(t_f_product + phase)
+
+        product = torch.einsum("bi,i -> bi", p_function, self.amplitude)
+
+        const = self.const.unsqueeze(0).repeat(batch_size, 0)
+
+        return product + const
+
+
+class C_inf_Layer(nn.Module):
+    """ Custom layer implementing C^inf periodic functions
+
+    """
+    def __init__(self, T, n, m) -> None:
+        super().__init__()
+
+        self.layer = nn.Sequential(SinusoidalLayer(T, m),
+                                   nn.Tanh(),
+                                   nn.Linear(m, n),
+                                   nn.Tanh())
+    def forward(self, t):
+        return self.layer.forward(t)
+
+
 class FourierLayer(nn.Module):
     """ Custom Layer to construct time function starting from
     the Fourier transform.
@@ -76,42 +134,38 @@ class FourierLayer(nn.Module):
     def __init__(self, frequencies, out_dim:int, threshold:float,
                  impose_positivity:bool = False):
         super().__init__()
-        N_freq = len(frequencies)+1
+        N_freq = len(frequencies)
 
         # create different set of frequencies for each output
         frequencies = frequencies.repeat(out_dim, 1)
-        self.frequencies = nn.Parameter(frequencies, requires_grad=True)
+        self.frequencies = nn.Parameter(frequencies, requires_grad=False)
 
-        weights = torch.ones((out_dim, 2*(N_freq)))
-        self.weights = nn.Parameter(weights)
+        weight = torch.ones((out_dim, 2*(N_freq)+1))
+        self.weight = nn.Parameter(weight)
 
         self.out_dim = out_dim
         self.threshold = threshold
         self.pos = impose_positivity
 
         # initialize weights
-        nn.init.kaiming_uniform_(self.weights, a=15) # weight init
-        fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weights)
+        nn.init.uniform_(self.weight, 0)
 
     def forward(self, t):
         # bound the frequencies
-        frequencies = self.frequencies.clamp(1e-3, 100)
-        # add the 0 frequency term
-        frequencies = torch.cat((frequencies,
-                                 torch.zeros(self.out_dim).unsqueeze_(1)), dim=1)
+        frequencies = self.frequencies.clamp(1e-2, 20)
+
         t_f_product = torch.einsum('b,wf -> bwf', t, frequencies)
         F = torch.cat((torch.cos(t_f_product),\
                        torch.sin(t_f_product)), dim=-1)
+        # add the 0 frequency term = constant
+        F = torch.cat((F, torch.ones(len(t), self.out_dim).unsqueeze_(-1)), dim=-1)
 
         # w -> index for the output vector
         # b -> batch index
         # n -> Fourier decomposition element
-        w = torch.einsum('wn,bwn->bw', self.weights, F)
+        w = torch.einsum('wn,bwn->bw', self.weight, F)
 
-        if self.pos:
-            return torch.abs(w)
-        else:
-            return w
+        return w
 
 
 class Snake(nn.Module):
@@ -121,6 +175,7 @@ class Snake(nn.Module):
 
     def forward(self, x):
         return 0 - (0.5/self.a)*torch.cos(2.*self.a*x) + 0.5/self.a
+
 
 @torch.no_grad()
 def init_weights(m):
