@@ -60,30 +60,24 @@ def train(model, criterion, optimizer, scheduler, train_loader, n_epochs, device
             summed_train_loss = np.append(summed_train_loss, loss.item())
 
             # regularization for U to be unitary
-            # u_re = model.MLP.u_re
-            # u_im = model.MLP.u_im
-            # matrix_1 = torch.mm(u_re, u_re.T) + torch.mm(u_im, u_im.T) - torch.eye(u_re.shape[0])
-            # matrix_1 = torch.abs(matrix_1)
-            # matrix_2 = torch.mm(u_im, u_re.T) - torch.mm(u_re, u_im.T)
-            # matrix_2 = torch.abs(matrix_2)
-            # loss += (1e-5)*( torch.sum(matrix_1) + torch.sum(matrix_2) )
-            # L2 regularization
-            # norm_weights = torch.norm(model.MLP.omega_net.weights)*\
-            #     torch.norm(model.MLP.gamma_net.weights)
-            # loss /= 1 + lamda*norm_weights
+            u_re = model.MLP.u_re
+            u_im = model.MLP.u_im
+            matrix_1 = torch.mm(u_re, u_re.T) + torch.mm(u_im, u_im.T) - torch.eye(u_re.shape[0])
+            matrix_1 = torch.abs(matrix_1)
+            matrix_2 = torch.mm(u_im, u_re.T) - torch.mm(u_re, u_im.T)
+            matrix_2 = torch.abs(matrix_2)
+            loss += (1e-2)*( torch.sum(matrix_1) + torch.sum(matrix_2) )
 
-            #--> regularization
-            l2_regularizer = torch.norm(model.MLP.omega_net.weight)*\
-                            torch.norm(model.MLP.gamma_net[0].weight)
-            l1_regularizer = torch.norm(model.MLP.omega_net.weight, 1) + \
-                            torch.norm(model.MLP.gamma_net[0].weight, 1)
-                            #torch.norm(model.MLP.u_re, 1) + \
-                            #torch.norm(model.MLP.u_im, 1)
+            # weights regularization
+            l2_regularizer = torch.norm(model.MLP.omega_net[1].weight) + \
+                            torch.norm(model.MLP.gamma_net[1].weight)
+            l1_regularizer = torch.norm(model.MLP.omega_net[1].weight, 1) + \
+                            torch.norm(model.MLP.gamma_net[1].weight, 1)
+                #torch.norm(model.MLP.omega_net.const, 1) + \
+                #torch.norm(model.MLP.gamma_net[0].const, 1)
             # Elastic Net
-            #loss += 0.01*( torch.norm(model.MLP.u_re) + torch.norm(model.MLP.u_im) )
             loss += alpha_1*l1_regularizer
-            loss /= 1 + alpha_2*l2_regularizer
-            #print(f"L1 {alpha_1*l1_regularizer}")
+            loss += alpha_2*l2_regularizer
 
             # backpropagate = calculate derivatives
             loss.backward(retain_graph=True)
@@ -115,7 +109,7 @@ def train(model, criterion, optimizer, scheduler, train_loader, n_epochs, device
 
         print('=== Mean train loss: {:.12f}'.format(summed_train_loss.mean()))
         print('=== lr: {:.5f}'.format(scheduler.get_last_lr()[0]))
-        #print(f'frequency gamma {model.MLP.gamma_net.frequencies}, omega {model.MLP.omega_net.frequencies}')
+        print(f'frequency gamma {model.MLP.gamma_net[0].frequencies.data}, omega {model.MLP.omega_net[0].frequencies.data}')
         mean_train_loss.append(summed_train_loss.mean())
 
     return mean_train_loss

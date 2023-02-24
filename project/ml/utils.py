@@ -9,163 +9,78 @@ import getopt
 import sys
 from torch.utils.data.sampler import SubsetRandomSampler
 
-# def custom_pruning_unstructured(module, name, threshold):
-#     """Prunes tensor corresponding to parameter called `name` in `module`
-#     by setting to zero if < threshold
-#     Modifies module in place (and also return the modified module)
-#     by:
-#     1) adding a named buffer called `name+'_mask'` corresponding to the
-#     binary mask applied to the parameter `name` by the pruning method.
-#     The parameter `name` is replaced by its pruned version, while the
-#     original (unpruned) parameter is stored in a new parameter named
-#     `name+'_orig'`.
-
-#     Args:
-#         module (nn.Module): module containing the tensor to prune
-#         name (string): parameter name within `module` on which pruning
-#                 will act.
-
-#     Returns:
-#         module (nn.Module): modified (i.e. pruned) version of the input
-#             module
-
-#     Examples:
-#         >>> m = nn.Linear(3, 4)
-#         >>> custum_pruning_unstructured(m, name='bias')
-#     """
-#     pruning = ThresholdPruning()
-#     print('ciao')
-#     pruning.apply(module, name)
-
-#     return module
-
-# class ThresholdPruning(prune.BasePruningMethod):
-#     PRUNING_TYPE = "unstructured"
-
-#     def __init__(self):
-#         self.threshold = 1e-2
-
-#     def compute_mask(self, tensor, default_mask):
-#         mask = torch.abs(tensor[:, :]) < self.threshold
-#         default_mask[mask] = 0
-#         return default_mask
-#         #return torch.abs(tensor) > self.threshold
-
-class SinusoidalLayer(nn.Module):
-    """ Custom Layer implementing sinusoids linear combination.
-
-
-    """
-    def __init__(self, T, m) -> None:
-        super().__init__()
-        self.m = m
-
-        self.frequency = 2*torch.pi/T
-
-        amplitude = torch.ones(m)
-        self.amplitude = nn.Parameter(amplitude)
-
-        phase = torch.zeros(m)
-        self.phase = nn.Parameter(phase)
-
-        const = torch.zeros(m)
-        self.const = nn.Parameter(const)
-
-        # init
-        nn.init.uniform_(self.amplitude, 0.1)
-
-    def forward(self, t):
-        batch_size = t.shape
-
-        # i -> index for the output vector
-        # b -> batch index
-
-        # putting everything in the right dimension
-        t_f_product = (t*self.frequency).unsqueeze(1)
-        t_f_product = t_f_product.repeat(self.m, 1)
-        phase = self.phase.unsqueeze(0).repeat(batch_size, 0)
-
-        p_function = torch.cos(t_f_product + phase)
-
-        product = torch.einsum("bi,i -> bi", p_function, self.amplitude)
-
-        const = self.const.unsqueeze(0).repeat(batch_size, 0)
-
-        return product + const
-
-
-class C_inf_Layer(nn.Module):
-    """ Custom layer implementing C^inf periodic functions
-
-    """
-    def __init__(self, T, n, m) -> None:
-        super().__init__()
-
-        self.layer = nn.Sequential(SinusoidalLayer(T, m),
-                                   nn.Tanh(),
-                                   nn.Linear(m, n),
-                                   nn.Tanh())
-    def forward(self, t):
-        return self.layer.forward(t)
-
-
 class FourierLayer(nn.Module):
-    """ Custom Layer to construct time function starting from
-    the Fourier transform.
+    """ Custom Layer that outputs the Fourier components.
 
-    For each output the model learns the 0 frequency (const) term
-    and the real anc complex part for each frequency in input.
-    Note the frequencies are learnable parameters!
+    Given the number of frequency the model outputs
+    A*cos(t*f + phi) + c   first half
+    A*sin(t*f + phi) + c   second half
 
-    Because of the use of periodic functions the learning procedure of this
-    model is really delicate, and the risk of ending in a local minima very high.
+    This should be Fourier decomposition of the functions.
 
     Parameters
     ----------
     frequencies : array float
         Init values for the frequencies
-    out_dim : int
-        Dimention of the output
-    threshold : float
-        Threshold for pruning
-    impose_positivity : bool
-        Whether or not to have a >=0 output.
+    require_amplitude : bool
+        Whether to set amplitude != 1. Becomes usefull
+        in case one is applying the non-linear function.
+    require_constant : bool
+        Whether to have constant != 0. Becomes usefull
+        in case one is ammplying the non-linear function.
+    require_phase : bool
+        Whether to put the phase, bounded between -pi/2, pi/2
     """
-    def __init__(self, frequencies, out_dim:int, threshold:float,
-                 impose_positivity:bool = False):
+    def __init__(self, frequencies, require_amplitude=False,
+                 require_constant=False, require_phase=False):
         super().__init__()
         N_freq = len(frequencies)
 
-        # create different set of frequencies for each output
-        frequencies = frequencies.repeat(out_dim, 1)
-        self.frequencies = nn.Parameter(frequencies, requires_grad=False)
+        self.frequencies = nn.Parameter(frequencies, requires_grad=True)
 
-        weight = torch.ones((out_dim, 2*(N_freq)+1))
-        self.weight = nn.Parameter(weight)
+        amplitude = torch.ones(2*N_freq)
+        if require_amplitude:
+            self.amplitude = nn.Parameter(amplitude)
+            nn.init.normal_(self.amplitude, 0, 0.1)
+        else:
+            self.amplitude = amplitude
 
-        self.out_dim = out_dim
-        self.threshold = threshold
-        self.pos = impose_positivity
+        const = torch.zeros_like(amplitude)
+        if require_constant:
+            self.const = nn.Parameter(const)
+            nn.init.normal_(self.const, 0, 0.1)
+        else:
+            self.const = const
 
-        # initialize weights
-        nn.init.uniform_(self.weight, 0)
+        phase = torch.zeros(N_freq)
+        if require_phase:
+            self.phase = nn.Parameter(phase)
+            nn.init.normal_(self.phase, 0, 0.1)
+        else:
+            self.phase = phase
 
     def forward(self, t):
+        batch_size = t.shape[0]
         # bound the frequencies
-        frequencies = self.frequencies.clamp(1e-2, 20)
+        #frequencies = self.frequencies.clamp(1e-2, 20)
+        # bound the phases
+        phase = self.phase.clamp(-0.5*torch.pi, 0.5*torch.pi)
 
-        t_f_product = torch.einsum('b,wf -> bwf', t, frequencies)
-        F = torch.cat((torch.cos(t_f_product),\
-                       torch.sin(t_f_product)), dim=-1)
-        # add the 0 frequency term = constant
-        F = torch.cat((F, torch.ones(len(t), self.out_dim).unsqueeze_(-1)), dim=-1)
+        t_f_product = torch.einsum('b,f -> bf', t, self.frequencies)
+        argument = t_f_product + phase.repeat(batch_size, 1)
+        F = torch.cat((torch.cos(argument),\
+                       torch.sin(argument)), dim=-1)
 
-        # w -> index for the output vector
-        # b -> batch index
-        # n -> Fourier decomposition element
-        w = torch.einsum('wn,bwn->bw', self.weight, F)
+        return torch.einsum('bf, f -> bf', F, self.amplitude) + \
+            self.const.repeat(batch_size, 1)
 
-        return w
+
+class Square(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+
+    def forward(self, x):
+        return torch.square(x)
 
 
 class Snake(nn.Module):
@@ -259,11 +174,13 @@ def pauli_s_const():
     abc = oe.contract('aij,bjk,cki->abc', base_F, base_F, base_F )
     acb = oe.contract('aij,bki,cjk->abc', base_F, base_F, base_F )
 
-    f = np.real( 1j*0.5*(abc - acb) )
-    d = np.real( 0.5*(abc + acb) )
+    # added -, and put 0.25 instead of 0.5
+    f = np.real( -1j*0.25*(abc - acb) )
+    d = np.real( 0.25*(abc + acb) )
 
     # return as a torch tensor
     return torch.from_numpy(f).float(), torch.from_numpy(d).float()
+
 
 def ensure_empty_dir(directory):
     if len(os.listdir(directory)) != 0:
@@ -368,3 +285,186 @@ def get_params_from_cmdline(argv, default_params=None):
             default_params['working_dir'] = arg
 
     return default_params
+
+class SinusoidalLayer(nn.Module):
+    """ Custom Layer implementing sinusoids linear combination.
+
+    This layer take tie as input and output the
+    A * cos(t*w + ph) + c
+        where w  = frequency
+              ph = phase
+              A, c = amplitude and constant
+    Arguments
+    ---------
+    T : float
+        Maximum time
+    m : int
+        Number of independent periodic functions.
+    """
+    def __init__(self, T, m) -> None:
+        super().__init__()
+        self.m = m
+
+        self.frequency = nn.Parameter(torch.Tensor([1.5]))
+
+        amplitude = torch.ones(m)
+        self.amplitude = nn.Parameter(amplitude)
+
+        phase = torch.zeros(m)
+        self.phase = nn.Parameter(phase)
+
+        const = torch.zeros(m)
+        self.const = nn.Parameter(const)
+
+        # init
+        nn.init.uniform_(self.amplitude, 0.1)
+
+    def forward(self, t):
+        batch_size = t.shape[0]
+
+        # i -> index for the output vector
+        # b -> batch index
+
+        # putting everything in the right dimension
+        t_f_product = (t*self.frequency).unsqueeze(1)
+        t_f_product = t_f_product.repeat(1, self.m)
+        phase = self.phase.repeat(batch_size, 1)
+
+        p_function = torch.cos(t_f_product + phase)
+
+        product = torch.einsum("bi,i -> bi", p_function, self.amplitude)
+
+        const = self.const.repeat(batch_size, 1)
+
+        return product + const
+
+
+class C_inf_Layer(nn.Module):
+    """ Custom layer implementing C^inf periodic functions
+
+    Arguments
+    ---------
+    T : float
+        Maximum time, the minimim frequency is caluclated accordingly
+    m : int
+        Number of indepdendent periodic functions
+    n : int
+        Number of nodes = output dimension
+    """
+    def __init__(self, T, n, m) -> None:
+        super().__init__()
+
+        self.layer = nn.Sequential(SinusoidalLayer(T, m),
+                                   nn.Tanh(),
+                                   nn.Linear(m, n),
+                                   nn.Tanh())
+    def forward(self, t):
+        return self.layer.forward(t)
+
+
+# def custom_pruning_unstructured(module, name, threshold):
+#     """Prunes tensor corresponding to parameter called `name` in `module`
+#     by setting to zero if < threshold
+#     Modifies module in place (and also return the modified module)
+#     by:
+#     1) adding a named buffer called `name+'_mask'` corresponding to the
+#     binary mask applied to the parameter `name` by the pruning method.
+#     The parameter `name` is replaced by its pruned version, while the
+#     original (unpruned) parameter is stored in a new parameter named
+#     `name+'_orig'`.
+
+#     Args:
+#         module (nn.Module): module containing the tensor to prune
+#         name (string): parameter name within `module` on which pruning
+#                 will act.
+
+#     Returns:
+#         module (nn.Module): modified (i.e. pruned) version of the input
+#             module
+
+#     Examples:
+#         >>> m = nn.Linear(3, 4)
+#         >>> custum_pruning_unstructured(m, name='bias')
+#     """
+#     pruning = ThresholdPruning()
+#     print('ciao')
+#     pruning.apply(module, name)
+
+#     return module
+
+# class ThresholdPruning(prune.BasePruningMethod):
+#     PRUNING_TYPE = "unstructured"
+
+#     def __init__(self):
+#         self.threshold = 1e-2
+
+#     def compute_mask(self, tensor, default_mask):
+#         mask = torch.abs(tensor[:, :]) < self.threshold
+#         default_mask[mask] = 0
+#         return default_mask
+#         #return torch.abs(tensor) > self.threshold
+
+class FourierLayer_backup(nn.Module):
+    """ Custom Layer that outputs the Fourier components.
+
+    For each output the model learns the 0 frequency (const) term
+    and the real anc complex part for each frequency in input.
+    Note the frequencies are learnable parameters!
+
+    Because of the use of periodic functions the learning procedure of this
+    model is really delicate, and the risk of ending in a local minima very high.
+
+    Parameters
+    ----------
+    frequencies : array float
+        Init values for the frequencies
+    out_dim : int
+        Dimention of the output
+    threshold : float
+        Threshold for pruning
+    impose_positivity : bool
+        Whether or not to have a >=0 output.
+    """
+    def __init__(self, frequencies, constant=False, phase=False):
+        super().__init__()
+        N_freq = len(frequencies)
+
+        # create different set of frequencies for each output
+        frequencies = frequencies.repeat(out_dim, 1)
+        self.frequencies = nn.Parameter(frequencies, requires_grad=True)
+
+        weight = torch.ones((out_dim, 2*N_freq))
+        self.weight = nn.Parameter(weight)
+        const = torch.ones_like(weight)
+        self.const = nn.Parameter(const)
+
+        self.out_dim = out_dim
+        self.threshold = threshold
+
+        # initialize weights
+        nn.init.normal_(self.weight, 0, 0.1)
+        nn.init.normal_(self.const, 0, 0.1)
+
+    def forward(self, t):
+        batch_size = t.shape[0]
+        # bound the frequencies
+        #frequencies = self.frequencies.clamp(1e-2, 20)
+
+        t_f_product = torch.einsum('b,wf -> bwf', t, self.frequencies)
+        F = torch.cat((torch.cos(t_f_product),\
+                       torch.sin(t_f_product)), dim=-1)
+        # add the linear term
+        #linear_term = torch.einsum('w,b->bw', self.linear, t)
+        #F = torch.cat((F, linear_term.unsqueeze_(-1)), dim=-1)
+
+        # w -> index for the output vector
+        # b -> batch index
+        # n -> Fourier decomposition element
+        # w = torch.einsum('wn,bwn->bw', self.weight, F)
+        w = torch.einsum('wn,bwn->bwn', self.weight, F)
+
+        # I want to constrain the constant term to be positive
+        const = self.const.repeat(batch_size, 1, 1)
+
+        # sum ove the Fourier components
+        return torch.einsum('bwn->bw', w+const)

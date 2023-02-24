@@ -401,21 +401,21 @@ class Lindbladian(ABC):
 
     def forward(self, t, x):
 
-        re_c = self.kossakowski(t).real
-        im_c = self.kossakowski(t).imag
+        re_c = self.kossakowski(t).real.float()
+        im_c = self.kossakowski(t).imag.float()
 
         # Here I impose the fact c_re is symmetric and c_im antisymmetric
         re_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.f, re_c )
         re_2 = -4.*torch.einsum('mik,njk,ij->mn', self.f, self.f, re_c )
-        im_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.d, im_c )
-        im_2 =  4.*torch.einsum('mik,njk,ij->mn', self.f, self.d, im_c )
+        im_1 =  4.*torch.einsum('mjk,nik,ij->mn', self.f, self.d, im_c )
+        im_2 = -4.*torch.einsum('mik,njk,ij->mn', self.f, self.d, im_c )
         d_super_x_re = torch.add(re_1, re_2 )
         d_super_x_im = torch.add(im_1, im_2 )
         d_super_x = torch.add(d_super_x_re, d_super_x_im )
 
-        tr_id = -4.*torch.einsum('imj,ij->m', self.f, im_c )
+        tr_id = 4.*torch.einsum('imj,ij->m', self.f, im_c )
 
-        h_commutator_x =  4.* torch.einsum('ijk,k->ji', self.f, self.omega(t))
+        h_commutator_x = -4.* torch.einsum('ijk,k->ij', self.f, self.omega(t))
 
         # building the Lindbladian operator
         L = torch.zeros(16, 16)

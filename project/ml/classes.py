@@ -12,7 +12,7 @@ import h5py
 from torch.utils.data.dataset import Dataset
 
 from ml.utils import pauli_s_const, get_arch_from_layer_list, \
-    init_weights, Snake, FourierLayer
+    init_weights, Snake, FourierLayer, C_inf_Layer, Square
 
 class CustomDatasetFromHDF5(Dataset):
     '''Class implementing the Dataset object from HDF5 file.
@@ -675,13 +675,6 @@ class exp_LL_td_2(nn.Module):
         # where u is a unitary matrix and gamma a diagonal matrix of
         # time-dependent functions, of which the model learns the Fourier
         # decomposition.
-        frequencies = torch.Tensor([0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5])
-        #frequencies = torch.Tensor([1.5])
-        self.gamma_net = nn.Sequential(FourierLayer(frequencies=frequencies,
-                                                    out_dim=self.data_dim,
-                                                    threshold=1e-2),
-                                       nn.ReLU())
-        self.gamma_normalization = 1#500
 
         # the model learn separately the real and complex part of the matrix at
         # the exponent
@@ -693,13 +686,43 @@ class exp_LL_td_2(nn.Module):
         nn.init.kaiming_uniform_(self.u_re, a=10)
         nn.init.kaiming_uniform_(self.u_im, a=10)
 
+        # NOTE: if the frequencies are learnable params it is important to initialize
+        # again the tensor, otherwise the model treats them equally (updated in the
+        # same manner)
+        #frequencies = torch.Tensor([0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5])
+        frequencies = [1.5]
+        self.gamma_net = nn.Sequential(FourierLayer(frequencies=torch.Tensor(frequencies)),
+                                       #nn.Tanh(),
+                                       nn.Linear(2*len(frequencies), self.data_dim),
+                                       Square())
+        self.gamma_normalization = 1#100
+
+        self.omega_net = nn.Sequential(FourierLayer(frequencies=torch.Tensor(frequencies)),
+                                       #nn.Tanh(),
+                                       nn.Linear(2*len(frequencies), self.data_dim),
+                                       )
+        self.omega_normalization = 1#5
+
+        #frequencies = torch.Tensor([i for i in range(11)])
+        #frequencies = torch.Tensor([i for i in np.arange(0.5, 40, 0.5)])
+        #frequencies = torch.Tensor([0.1, 0.5, 1])
+        # self.gamma_net = nn.Sequential(FourierLayer(frequencies=frequencies,
+        #                                             out_dim=self.data_dim,
+        #                                             threshold=1e-2),
+        #                                nn.ReLU())
+        # self.gamma_net = nn.Sequential(C_inf_Layer(T=10, n=self.data_dim, m=1),
+        #                                nn.ReLU())
+        # self.gamma_normalization = 1#100
+
         # Hamiltonian parameters omega, also this is a vector of time-dependent
         # functions.
-        #frequencies = torch.Tensor([0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5])
-        #frequencies = torch.Tensor([1.5])
-        self.omega_net = FourierLayer(frequencies=frequencies,
-                                      out_dim=self.data_dim, threshold=1e-2)
-        self.omega_normalization = 1#10
+        #frequencies = torch.Tensor([0.1, 0.2, 0.3, 0.5, 0.7, 1, 2])
+        #frequencies = torch.Tensor([i for i in range(5)])
+        #frequencies = torch.Tensor([0.1, 0.5, 1])
+        # self.omega_net = FourierLayer(frequencies=frequencies,
+        #                               out_dim=self.data_dim, threshold=1e-2)
+        # self.omega_net = C_inf_Layer(T=10, n=self.data_dim, m=1)
+        # self.omega_normalization = 1#5
 
     def forward(self, t, x):
         """Forward step of the model. """
@@ -726,15 +749,15 @@ class exp_LL_td_2(nn.Module):
         # Here I impose the fact c_re is symmetric and c_im antisymmetric
         re_1 = -4.*torch.einsum('mjk,nik,sij->smn', self.f, self.f, c_re )
         re_2 = -4.*torch.einsum('mik,njk,sij->smn', self.f, self.f, c_re )
-        im_1 = -4.*torch.einsum('mjk,nik,sij->smn', self.f, self.d, c_im )
-        im_2 =  4.*torch.einsum('mik,njk,sij->smn', self.f, self.d, c_im )
+        im_1 =  4.*torch.einsum('mjk,nik,sij->smn', self.f, self.d, c_im )
+        im_2 = -4.*torch.einsum('mik,njk,sij->smn', self.f, self.d, c_im )
         d_super_x_re = torch.add(re_1, re_2 )
         d_super_x_im = torch.add(im_1, im_2 )
         d_super_x = torch.add(d_super_x_re, d_super_x_im )
 
-        tr_id = -4.*torch.einsum('imj,sij->sm', self.f, c_im )
+        tr_id = 4.*torch.einsum('imj,sij->sm', self.f, c_im )
 
-        h_commutator_x =  4.* torch.einsum('ijk,sk->sji', self.f, omega).unsqueeze_(0)
+        h_commutator_x = -4.* torch.einsum('kij,sk->sij', self.f, omega).unsqueeze_(0)
 
         # building the Lindbladian operator
         L = torch.zeros(batch_size, self.data_dim+1, self.data_dim+1)
@@ -775,15 +798,15 @@ class exp_LL_td_2(nn.Module):
         # Here I impose the fact c_re is symmetric and c_im antisymmetric
         re_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.f, c_re )
         re_2 = -4.*torch.einsum('mik,njk,ij->mn', self.f, self.f, c_re )
-        im_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.d, c_im )
-        im_2 =  4.*torch.einsum('mik,njk,ij->mn', self.f, self.d, c_im )
+        im_1 =  4.*torch.einsum('mjk,nik,ij->mn', self.f, self.d, c_im )
+        im_2 = -4.*torch.einsum('mik,njk,ij->mn', self.f, self.d, c_im )
         d_super_x_re = torch.add(re_1, re_2 )
         d_super_x_im = torch.add(im_1, im_2 )
         d_super_x = torch.add(d_super_x_re, d_super_x_im )
 
-        tr_id = -4.*torch.einsum('imj,ij->m', self.f, c_im )
+        tr_id = 4.*torch.einsum('imj,ij->m', self.f, c_im )
 
-        h_commutator_x =  4.* torch.einsum('ijk,k->ji', self.f, omega)
+        h_commutator_x = -4.* torch.einsum('ijk,k->ij', self.f, omega)
 
         # building the Lindbladian operator
         L = torch.zeros(self.data_dim+1, self.data_dim+1)
