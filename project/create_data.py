@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-'''File for the data generation
+'''File for the data generation of TEBD trajectories
 '''
 import pandas as pd
 import numpy as np

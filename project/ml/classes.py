@@ -319,7 +319,7 @@ class exp_LL(nn.Module):
         bound = 1. / np.sqrt(fan_in)
         nn.init.uniform_(self.omega, -bound, bound)  # bias init
 
-    def forward(self, _, x):
+    def forward(self, t, x):
         """Forward step of the Layer.
 
         The second and third inputs are not used, but present for compatibility
@@ -342,15 +342,15 @@ class exp_LL(nn.Module):
         # Here I impose the fact c_re is symmetric and c_im antisymmetric
         re_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.f, c_re )
         re_2 = -4.*torch.einsum('mik,njk,ij->mn', self.f, self.f, c_re )
-        im_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.d, c_im )
-        im_2 =  4.*torch.einsum('mik,njk,ij->mn', self.f, self.d, c_im )
+        im_1 =  4.*torch.einsum('mjk,nik,ij->mn', self.f, self.d, c_im )
+        im_2 = -4.*torch.einsum('mik,njk,ij->mn', self.f, self.d, c_im )
         d_super_x_re = torch.add(re_1, re_2 )
         d_super_x_im = torch.add(im_1, im_2 )
         d_super_x = torch.add(d_super_x_re, d_super_x_im )
 
-        tr_id = -4.*torch.einsum('imj,ij ->m', self.f, c_im )
+        tr_id = 4.*torch.einsum('imj,ij ->m', self.f, c_im )
 
-        h_commutator_x =  4.* torch.einsum('ijk,k->ji', self.f, self.omega)
+        h_commutator_x = -4.* torch.einsum('ijk,k->ij', self.f, self.omega)
 
         # building the Lindbladian operator
         L = torch.zeros(self.data_dim+1, self.data_dim+1)
@@ -377,15 +377,15 @@ class exp_LL(nn.Module):
             # Here I impose the fact c_re is symmetric and c_im antisymmetric
             re_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.f, c_re )
             re_2 = -4.*torch.einsum('mik,njk,ij->mn', self.f, self.f, c_re )
-            im_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.d, c_im )
-            im_2 =  4.*torch.einsum('mik,njk,ij->mn', self.f, self.d, c_im )
+            im_1 =  4.*torch.einsum('mjk,nik,ij->mn', self.f, self.d, c_im )
+            im_2 = -4.*torch.einsum('mik,njk,ij->mn', self.f, self.d, c_im )
             d_super_x_re = torch.add(re_1, re_2 )
             d_super_x_im = torch.add(im_1, im_2 )
             d_super_x = torch.add(d_super_x_re, d_super_x_im )
 
-            tr_id = -4.*torch.einsum('imj,ij ->m', self.f, c_im )
+            tr_id = 4.*torch.einsum('imj,ij ->m', self.f, c_im )
 
-            h_commutator_x =  4.* torch.einsum('ijk,k->ji', self.f, self.omega)
+            h_commutator_x = -4.* torch.einsum('ijk,k->ij', self.f, self.omega)
 
             # building the Lindbladian operator
             L = torch.zeros(self.data_dim+1, self.data_dim+1)
@@ -690,18 +690,25 @@ class exp_LL_td_2(nn.Module):
         # again the tensor, otherwise the model treats them equally (updated in the
         # same manner)
         #frequencies = torch.Tensor([0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5])
-        frequencies = [1.5]
-        self.gamma_net = nn.Sequential(FourierLayer(frequencies=torch.Tensor(frequencies)),
+        frequencies = [i for i in np.arange(0.1, 5, 0.1)]
+        #frequencies = [0.1, 0.3, 0.5, 0.7, 1, 3, 5, 7, 10]
+        self.gamma_net = nn.Sequential(FourierLayer(frequencies=torch.Tensor(frequencies),
+                                                    require_phase=True),
                                        #nn.Tanh(),
-                                       nn.Linear(2*len(frequencies), self.data_dim),
+                                       nn.Linear(2*len(frequencies), 500),
+                                       nn.Linear(500, self.data_dim),
                                        Square())
-        self.gamma_normalization = 1#100
+        self.gamma_normalization = 500
 
         self.omega_net = nn.Sequential(FourierLayer(frequencies=torch.Tensor(frequencies)),
                                        #nn.Tanh(),
-                                       nn.Linear(2*len(frequencies), self.data_dim),
+                                       nn.Linear(2*len(frequencies), 50),
+                                       nn.Linear(50, self.data_dim)
                                        )
-        self.omega_normalization = 1#5
+        self.omega_normalization = 5
+
+        init_weights(self.omega_net)
+        init_weights(self.gamma_net)
 
         #frequencies = torch.Tensor([i for i in range(11)])
         #frequencies = torch.Tensor([i for i in np.arange(0.5, 40, 0.5)])
@@ -730,21 +737,20 @@ class exp_LL_td_2(nn.Module):
 
         u_re = self.u_re
         u_im = self.u_im
-
-        theta = u_re + 1j*u_im + u_re.T - 1j*u_im.T
-        u = torch.linalg.matrix_exp(1j*theta)
-
         gamma = self.gamma_net(t)/self.gamma_normalization
         omega = self.omega_net(t)/self.omega_normalization
 
+        #theta = u_re + 1j*u_im + u_re.T - 1j*u_im.T
+        #u = torch.linalg.matrix_exp(1j*theta)
+        #c = torch.einsum('ij,sj,jl->sil', u, gamma.type(torch.complex64), u.H)
+        #c_re = c.real
+        #c_im = c.imag
+
         # NOTE: s index is batch index
-        # c_re = torch.einsum('ij,sj,jl->sil', u_re, gamma, u_re.T) + \
-        #     torch.einsum('ij,sj,jl->sil', u_im, gamma, u_im.T)
-        # c_im = torch.einsum('ij,sj,jl->sil', u_im, gamma, u_re.T) - \
-        #     torch.einsum('ij,sj,jl->sil', u_re, gamma, u_im.T)
-        c = torch.einsum('ij,sj,jl->sil', u, gamma.type(torch.complex64), u.H)
-        c_re = c.real
-        c_im = c.imag
+        c_re = torch.einsum('ij,sj,jl->sil', u_re, gamma, u_re.T) + \
+            torch.einsum('ij,sj,jl->sil', u_im, gamma, u_im.T)
+        c_im = torch.einsum('ij,sj,jl->sil', u_im, gamma, u_re.T) - \
+            torch.einsum('ij,sj,jl->sil', u_re, gamma, u_im.T)
 
         # Here I impose the fact c_re is symmetric and c_im antisymmetric
         re_1 = -4.*torch.einsum('mjk,nik,sij->smn', self.f, self.f, c_re )
@@ -783,17 +789,20 @@ class exp_LL_td_2(nn.Module):
 
         u_re = self.u_re
         u_im = self.u_im
-
-        theta = u_re +1j*u_im + u_re.T -1j*u_im.T
-        u = torch.matrix_exp(1j*theta)
-
         gamma = self.gamma_net(t).squeeze()/self.gamma_normalization
         omega = self.omega_net(t).squeeze()/self.omega_normalization
 
+        #theta = u_re + 1j*u_im + u_re.T - 1j*u_im.T
+        #u = torch.linalg.matrix_exp(1j*theta)
+        #c = torch.einsum('ij,sj,jl->sil', u, gamma.type(torch.complex64), u.H)
+        #c_re = c.real
+        #c_im = c.imag
+
         # NOTE: s index is batch index
-        c = torch.einsum('ij,j,jl->il', u, gamma.type(torch.complex64), u.H)
-        c_re = c.real
-        c_im = c.imag
+        c_re = torch.einsum('ij,j,jl->il', u_re, gamma, u_re.T) + \
+            torch.einsum('ij,j,jl->il', u_im, gamma, u_im.T)
+        c_im = torch.einsum('ij,j,jl->il', u_im, gamma, u_re.T) - \
+            torch.einsum('ij,j,jl->il', u_re, gamma, u_im.T)
 
         # Here I impose the fact c_re is symmetric and c_im antisymmetric
         re_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.f, c_re )
@@ -818,33 +827,37 @@ class exp_LL_td_2(nn.Module):
 
     def get_L(self, t):
         '''Function that calculate the Lindbladian. '''
+        t = torch.Tensor([t])
         with torch.no_grad():
             u_re = self.u_re
             u_im = self.u_im
-
-            theta = u_re +1j*u_im + u_re.T -1j*u_im.T
-            u = torch.matrix_exp(1j*theta)
-
             gamma = self.gamma_net(t).squeeze()/self.gamma_normalization
             omega = self.omega_net(t).squeeze()/self.omega_normalization
 
+            #theta = u_re + 1j*u_im + u_re.T - 1j*u_im.T
+            #u = torch.linalg.matrix_exp(1j*theta)
+            #c = torch.einsum('ij,sj,jl->sil', u, gamma.type(torch.complex64), u.H)
+            #c_re = c.real
+            #c_im = c.imag
+
             # NOTE: s index is batch index
-            c = torch.einsum('ij,j,jl->il', u, gamma.type(torch.complex64), u.H)
-            c_re = c.real
-            c_im = c.imag
+            c_re = torch.einsum('ij,j,jl->il', u_re, gamma, u_re.T) + \
+                torch.einsum('ij,j,jl->il', u_im, gamma, u_im.T)
+            c_im = torch.einsum('ij,j,jl->il', u_im, gamma, u_re.T) - \
+                torch.einsum('ij,j,jl->il', u_re, gamma, u_im.T)
 
             # Here I impose the fact c_re is symmetric and c_im antisymmetric
             re_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.f, c_re )
             re_2 = -4.*torch.einsum('mik,njk,ij->mn', self.f, self.f, c_re )
-            im_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.d, c_im )
-            im_2 =  4.*torch.einsum('mik,njk,ij->mn', self.f, self.d, c_im )
+            im_1 =  4.*torch.einsum('mjk,nik,ij->mn', self.f, self.d, c_im )
+            im_2 = -4.*torch.einsum('mik,njk,ij->mn', self.f, self.d, c_im )
             d_super_x_re = torch.add(re_1, re_2 )
             d_super_x_im = torch.add(im_1, im_2 )
             d_super_x = torch.add(d_super_x_re, d_super_x_im )
 
-            tr_id = -4.*torch.einsum('imj,ij->m', self.f, c_im )
+            tr_id = 4.*torch.einsum('imj,ij->m', self.f, c_im )
 
-            h_commutator_x =  4.* torch.einsum('ijk,k->ji', self.f, omega)
+            h_commutator_x = -4.* torch.einsum('ijk,k->ij', self.f, omega)
 
             # building the Lindbladian operator
             L = torch.zeros(self.data_dim+1, self.data_dim+1)

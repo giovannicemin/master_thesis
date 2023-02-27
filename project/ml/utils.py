@@ -99,14 +99,14 @@ def init_weights(m):
     if isinstance(m, nn.Linear):
         #d = m.weight.shape[0]
         #nn.init.uniform_(m.weight, -d, d)
-        nn.init.kaiming_uniform_(m.weight, a=5)
+        #nn.init.kaiming_uniform_(m.weight, a=5)
         #m.weight = 0.1*m.weight
         #fan_in, _ = nn.init._calculate_fan_in_and_fan_out(m.weight)
         #bound = 1 / np.sqrt(fan_in)
         #nn.init.uniform_(m.bias, -bound, bound)
 
-        #nn.init.normal_(m.weight, 0, 0.05)
-        #nn.init.constant_(m.bias, 0)
+        nn.init.constant_(m.weight, 0, 0.1)
+        nn.init.constant_(m.bias, 0)
         #nn.init.uniform_(m.bias, -0.01, 0.01)
 
 

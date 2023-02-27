@@ -1,10 +1,13 @@
 import torch
+import matplotlib.pyplot as plt
+from pathlib import Path
+
 
 from ml.classes import MLLP
 from ml.utils import ensure_empty_dir, load_data
 from ml.core import train, eval
 from sfw.optimizers import Adam
-from torch.optim.lr_scheduler import ExponentialLR, MultiStepLR
+from torch.optim.lr_scheduler import ExponentialLR, MultiStepLR, CyclicLR
 
 S = [1, 2, 3, 4, 5, 6, 7, 8, 9]
 W = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5]
@@ -34,7 +37,7 @@ ml_params = {'model_dir': './data/trained_unc_td_prova/',  # folder where the me
              'batch_size': 256,
              'time_dependent': True,
              # 'batches_per_epoch': 256,
-             'n_epochs': 300,
+             'n_epochs': 10000,
              'device': 'cpu',
              'mlp_params': {
                  'data_dim': 15,
@@ -73,18 +76,34 @@ if __name__ == '__main__':
         # create the model
         model = MLLP(ml_params['mlp_params'], potential=potential,
                      time_dependent=ml_params['time_dependent']).to(ml_params['device'])
+        # import the model
+        name = 'model_L_' + str(prms['L']) + \
+                '_V_' + str(int(potential*1e3)).zfill(4) + \
+                '_dt_' + str(int(prms['dt']*1e3)).zfill(4) + \
+                '_T' + str(10).zfill(2) + '24'
+
+        model = MLLP(ml_params['mlp_params'], potential = potential, time_dependent=True).to(ml_params['device'])
+        model.load_state_dict(torch.load(Path('./data/trained_unc_td_prova/' + name)))
 
         criterion = torch.nn.MSELoss()
-        optimizer = Adam(model.parameters(), lr=0.01)
+        optimizer = Adam(model.parameters(), lr=0.001)
         #optimizer = Adam(model.parameters(), lr=0.01)
-        #scheduler = ExponentialLR(optimizer, 1)
-        scheduler = MultiStepLR(optimizer, milestones=[30, 90,160,240], gamma=0.1)
-
+        scheduler = ExponentialLR(optimizer, 1)
+        #scheduler = MultiStepLR(optimizer, milestones=[1400], gamma=0.1)
+        #scheduler = CyclicLR(optimizer, base_lr=1e-6, max_lr=1e-3,
+        #                     step_size_up=100, step_size_down=900,
+        #                     mode='triangular', cycle_momentum=False)
 
         # train the model
-        train(model, criterion, optimizer, scheduler, train_loader,
+        loss = train(model, criterion, optimizer, scheduler, train_loader,
               ml_params['n_epochs'], ml_params['device'],
-              epochs_to_prune=[])#[i for i in range(250, 301)])#[200, 250, 350, 400, 450, 650, 700, 750])
+                     epochs_to_prune=[], alpha_1=1e-5, alpha_2=1e-5)
+
+        plt.figure(figsize=(12,6))
+        plt.plot([i for i in range(1, ml_params['n_epochs']+1)], loss)
+        plt.yscale('log')
+        plt.grid()
+        plt.show()
 
         # eval the model
         #eval(model, criterion, eval_loader, ml_params['device'])
@@ -93,6 +112,6 @@ if __name__ == '__main__':
         name = 'model_L_' + str(prms['L']) + \
             '_V_' + str(int(potential*1e3)).zfill(4) + \
             '_dt_' + str(int(prms['dt']*1e3)).zfill(4) + \
-            '_T' + str(int(prms['T'])).zfill(2)
+            '_T' + str(int(prms['T'])).zfill(2) + '24'
 
         torch.save(model.state_dict(), ml_params['model_dir'] + name)

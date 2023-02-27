@@ -66,13 +66,18 @@ def train(model, criterion, optimizer, scheduler, train_loader, n_epochs, device
             matrix_1 = torch.abs(matrix_1)
             matrix_2 = torch.mm(u_im, u_re.T) - torch.mm(u_re, u_im.T)
             matrix_2 = torch.abs(matrix_2)
-            loss += (1e-2)*( torch.sum(matrix_1) + torch.sum(matrix_2) )
+            matrix_3 = torch.mm(u_re.T, u_re) + torch.mm(u_im.T, u_im) - torch.eye(u_re.shape[0])
+            matrix_3 = torch.abs(matrix_3)
+            matrix_4 = torch.mm(u_im.T, u_re) - torch.mm(u_re.T, u_im)
+            matrix_4 = torch.abs(matrix_4)
+            loss += ( torch.sum(matrix_1) + torch.sum(matrix_2) + \
+                      torch.sum(matrix_3) + torch.sum(matrix_4) )/(matrix_1.shape[0])**2
 
             # weights regularization
-            l2_regularizer = torch.norm(model.MLP.omega_net[1].weight) + \
-                            torch.norm(model.MLP.gamma_net[1].weight)
-            l1_regularizer = torch.norm(model.MLP.omega_net[1].weight, 1) + \
-                            torch.norm(model.MLP.gamma_net[1].weight, 1)
+            l2_regularizer = torch.norm(model.MLP.omega_net[-1].weight) + \
+                            torch.norm(model.MLP.gamma_net[-2].weight)
+            l1_regularizer = torch.norm(model.MLP.omega_net[-1].weight, 1) + \
+                            torch.norm(model.MLP.gamma_net[-2].weight, 1)
                 #torch.norm(model.MLP.omega_net.const, 1) + \
                 #torch.norm(model.MLP.gamma_net[0].const, 1)
             # Elastic Net
@@ -109,7 +114,9 @@ def train(model, criterion, optimizer, scheduler, train_loader, n_epochs, device
 
         print('=== Mean train loss: {:.12f}'.format(summed_train_loss.mean()))
         print('=== lr: {:.5f}'.format(scheduler.get_last_lr()[0]))
-        print(f'frequency gamma {model.MLP.gamma_net[0].frequencies.data}, omega {model.MLP.omega_net[0].frequencies.data}')
+        print(f'l1 reg {alpha_1*l1_regularizer}')
+        print(f'l2 reg {alpha_2*l2_regularizer}')
+        #print(f'frequency gamma {model.MLP.gamma_net[0].frequencies.data}, omega {model.MLP.omega_net[0].frequencies.data}')
         mean_train_loss.append(summed_train_loss.mean())
 
     return mean_train_loss
