@@ -32,11 +32,12 @@ class FourierLayer(nn.Module):
         Whether to put the phase, bounded between -pi/2, pi/2
     """
     def __init__(self, frequencies, require_amplitude=False,
-                 require_constant=False, require_phase=False):
+                 require_constant=False, require_phase=False,
+                 learnable_f=False):
         super().__init__()
         N_freq = len(frequencies)
 
-        self.frequencies = nn.Parameter(frequencies, requires_grad=True)
+        self.frequencies = nn.Parameter(frequencies, requires_grad=learnable_f)
 
         amplitude = torch.ones(2*N_freq)
         if require_amplitude:
@@ -105,7 +106,7 @@ def init_weights(m):
         #bound = 1 / np.sqrt(fan_in)
         #nn.init.uniform_(m.bias, -bound, bound)
 
-        nn.init.constant_(m.weight, 0, 0.1)
+        nn.init.normal_(m.weight, 0, 0.1)
         nn.init.constant_(m.bias, 0)
         #nn.init.uniform_(m.bias, -0.01, 0.01)
 

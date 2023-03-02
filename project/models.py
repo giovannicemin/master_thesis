@@ -134,17 +134,22 @@ class SpinChain:
 
         # initial codition obtained by means of a projection
         # and random unitary
-        sigma_m = 0.5*(qu.pauli('X') - 1j*qu.pauli('Y'))
-        projection = sigma_m & qu.pauli('I')
-        if uncorrelate:
-            self.psi_th.gate_(projection & projection, (0,1), contract='swap+split')
-            self.psi_th /= self.psi_th.norm() #normalization
+        # sigma_m = 0.5*(qu.pauli('X') - 1j*qu.pauli('Y'))
+        # projection = sigma_m & qu.pauli('I')
+        # if uncorrelate:
+        #     self.psi_th.gate_(projection & projection, (0,1), contract='swap+split')
+        #     self.psi_th /= self.psi_th.norm() #normalization
 
-        rand_uni = qu.gen.rand.random_seed_fn(qu.gen.rand.rand_uni)
-        rand1 = rand_uni(2, seed=seed) & qu.pauli('I')
-        rand2 = rand_uni(2, seed=3*seed) & qu.pauli('I')
+        # # random initial condition
+        # rand_uni = qu.gen.rand.random_seed_fn(qu.gen.rand.rand_uni)
+        # rand1 = rand_uni(2, seed=seed) & qu.pauli('I')
+        # rand2 = rand_uni(2, seed=3*seed) & qu.pauli('I')
+        # self.psi_init = self.psi_th.gate(rand1&rand2, (0,1), contract='swap+split')
 
-        self.psi_init = self.psi_th.gate(rand1&rand2, (0,1), contract='swap+split')
+        # up-up initial condition
+        print("Projecting spins along Z \n")
+        sigma_z = qu.pauli('Z')&qu.pauli('I')
+        self.psi_init = self.psi_th.gate(sigma_z&sigma_z, (0,1), contract='swap+split')
 
         start = time.time()
 

@@ -74,12 +74,11 @@ def train(model, criterion, optimizer, scheduler, train_loader, n_epochs, device
                       torch.sum(matrix_3) + torch.sum(matrix_4) )/(matrix_1.shape[0])**2
 
             # weights regularization
-            l2_regularizer = torch.norm(model.MLP.omega_net[-1].weight) + \
-                            torch.norm(model.MLP.gamma_net[-2].weight)
-            l1_regularizer = torch.norm(model.MLP.omega_net[-1].weight, 1) + \
-                            torch.norm(model.MLP.gamma_net[-2].weight, 1)
-                #torch.norm(model.MLP.omega_net.const, 1) + \
-                #torch.norm(model.MLP.gamma_net[0].const, 1)
+            l2_regularizer = torch.norm(model.MLP.omega_net[2].weight) + \
+                            torch.norm(model.MLP.gamma_net[2].weight)
+
+            l1_regularizer = torch.norm(model.MLP.omega_net[1].weight, 1) + \
+                            torch.norm(model.MLP.gamma_net[1].weight, 1)
             # Elastic Net
             loss += alpha_1*l1_regularizer
             loss += alpha_2*l2_regularizer
@@ -87,7 +86,7 @@ def train(model, criterion, optimizer, scheduler, train_loader, n_epochs, device
             # backpropagate = calculate derivatives
             loss.backward(retain_graph=True)
 
-            # update values
+            # update lr
             optimizer.step(constraints)
 
         scheduler.step()

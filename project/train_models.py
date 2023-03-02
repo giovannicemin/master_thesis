@@ -76,14 +76,14 @@ if __name__ == '__main__':
         # create the model
         model = MLLP(ml_params['mlp_params'], potential=potential,
                      time_dependent=ml_params['time_dependent']).to(ml_params['device'])
-        # import the model
+        # name the model
         name = 'model_L_' + str(prms['L']) + \
                 '_V_' + str(int(potential*1e3)).zfill(4) + \
                 '_dt_' + str(int(prms['dt']*1e3)).zfill(4) + \
-                '_T' + str(10).zfill(2) + '24'
+                '_T' + str(10).zfill(2)
 
-        model = MLLP(ml_params['mlp_params'], potential = potential, time_dependent=True).to(ml_params['device'])
-        model.load_state_dict(torch.load(Path('./data/trained_unc_td_prova/' + name)))
+        # load existing model
+        # model.load_state_dict(torch.load(Path('./data/trained_unc_td_prova/' + name)))
 
         criterion = torch.nn.MSELoss()
         optimizer = Adam(model.parameters(), lr=0.001)
@@ -97,7 +97,7 @@ if __name__ == '__main__':
         # train the model
         loss = train(model, criterion, optimizer, scheduler, train_loader,
               ml_params['n_epochs'], ml_params['device'],
-                     epochs_to_prune=[], alpha_1=1e-5, alpha_2=1e-5)
+                     epochs_to_prune=[], alpha_1=1e-6, alpha_2=1e-5)
 
         plt.figure(figsize=(12,6))
         plt.plot([i for i in range(1, ml_params['n_epochs']+1)], loss)
@@ -109,9 +109,4 @@ if __name__ == '__main__':
         #eval(model, criterion, eval_loader, ml_params['device'])
 
         # save the model
-        name = 'model_L_' + str(prms['L']) + \
-            '_V_' + str(int(potential*1e3)).zfill(4) + \
-            '_dt_' + str(int(prms['dt']*1e3)).zfill(4) + \
-            '_T' + str(int(prms['T'])).zfill(2) + '24'
-
         torch.save(model.state_dict(), ml_params['model_dir'] + name)

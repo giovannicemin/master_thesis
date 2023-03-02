@@ -690,22 +690,29 @@ class exp_LL_td_2(nn.Module):
         # again the tensor, otherwise the model treats them equally (updated in the
         # same manner)
         #frequencies = torch.Tensor([0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5])
-        frequencies = [i for i in np.arange(0.1, 5, 0.1)]
+        frequencies = [i for i in np.arange(0.01, 30, 0.01)]
         #frequencies = [0.1, 0.3, 0.5, 0.7, 1, 3, 5, 7, 10]
         self.gamma_net = nn.Sequential(FourierLayer(frequencies=torch.Tensor(frequencies),
-                                                    require_phase=True),
+                                                    #require_amplitude=True,
+                                                    #require_constant=True,
+                                                    require_phase=False),
                                        #nn.Tanh(),
                                        nn.Linear(2*len(frequencies), 500),
                                        nn.Linear(500, self.data_dim),
+                                       #nn.Dropout(),
                                        Square())
-        self.gamma_normalization = 500
+        self.gamma_normalization = 200
 
-        self.omega_net = nn.Sequential(FourierLayer(frequencies=torch.Tensor(frequencies)),
+        self.omega_net = nn.Sequential(FourierLayer(frequencies=torch.Tensor(frequencies),
+                                                    #require_amplitude=True,
+                                                    #require_constant=True,
+                                                    require_phase=False),
                                        #nn.Tanh(),
-                                       nn.Linear(2*len(frequencies), 50),
-                                       nn.Linear(50, self.data_dim)
+                                       nn.Linear(2*len(frequencies), 500),
+                                       nn.Linear(50, self.data_dim),
+                                       #nn.Dropout(),
                                        )
-        self.omega_normalization = 5
+        self.omega_normalization = 200
 
         init_weights(self.omega_net)
         init_weights(self.gamma_net)
