@@ -93,7 +93,6 @@ class CustomDatasetFromHDF5(Dataset):
                     for _ in range(num_traj):
                         self.t.extend([i*dt for i in range(int(T_train/dt) - 1)])
 
-                print(f"Data points used in the training {len(self.X)}")
                 # I have to extract the potential from the name
                 # and add a vector of the same length
                 self.V.extend([int(g[14:18])*1e-3]*len(f[g + '/X'][()]))
@@ -690,29 +689,29 @@ class exp_LL_td_2(nn.Module):
         # again the tensor, otherwise the model treats them equally (updated in the
         # same manner)
         #frequencies = torch.Tensor([0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5])
-        frequencies = [i for i in np.arange(0.01, 30, 0.01)]
+        frequencies = [i for i in np.arange(0.5, 100, 0.5)]
         #frequencies = [0.1, 0.3, 0.5, 0.7, 1, 3, 5, 7, 10]
         self.gamma_net = nn.Sequential(FourierLayer(frequencies=torch.Tensor(frequencies),
-                                                    #require_amplitude=True,
-                                                    #require_constant=True,
+                                                    T=5,
+                                                    learnable_f=True,
+                                                    require_amplitude=True,
+                                                    # require_constant=True,
                                                     require_phase=False),
-                                       #nn.Tanh(),
-                                       nn.Linear(2*len(frequencies), 500),
-                                       nn.Linear(500, self.data_dim),
-                                       #nn.Dropout(),
+                                       # nn.Tanh(),
+                                       nn.Linear(2*len(frequencies), self.data_dim),
                                        Square())
-        self.gamma_normalization = 200
+        self.gamma_normalization = 150
 
         self.omega_net = nn.Sequential(FourierLayer(frequencies=torch.Tensor(frequencies),
-                                                    #require_amplitude=True,
-                                                    #require_constant=True,
+                                                    T=5,
+                                                    learnable_f=True,
+                                                    require_amplitude=True,
+                                                    # require_constant=True,
                                                     require_phase=False),
-                                       #nn.Tanh(),
-                                       nn.Linear(2*len(frequencies), 500),
-                                       nn.Linear(50, self.data_dim),
-                                       #nn.Dropout(),
+                                       # nn.Tanh(),
+                                       nn.Linear(2*len(frequencies), self.data_dim),
                                        )
-        self.omega_normalization = 200
+        self.omega_normalization = 150
 
         init_weights(self.omega_net)
         init_weights(self.gamma_net)
@@ -747,17 +746,17 @@ class exp_LL_td_2(nn.Module):
         gamma = self.gamma_net(t)/self.gamma_normalization
         omega = self.omega_net(t)/self.omega_normalization
 
-        #theta = u_re + 1j*u_im + u_re.T - 1j*u_im.T
-        #u = torch.linalg.matrix_exp(1j*theta)
-        #c = torch.einsum('ij,sj,jl->sil', u, gamma.type(torch.complex64), u.H)
-        #c_re = c.real
-        #c_im = c.imag
+        theta = u_re + 1j*u_im + u_re.T - 1j*u_im.T
+        u = torch.linalg.matrix_exp(1j*theta)
+        c = torch.einsum('ij,sj,jl->sil', u, gamma.type(torch.complex64), u.H)
+        c_re = c.real
+        c_im = c.imag
 
         # NOTE: s index is batch index
-        c_re = torch.einsum('ij,sj,jl->sil', u_re, gamma, u_re.T) + \
-            torch.einsum('ij,sj,jl->sil', u_im, gamma, u_im.T)
-        c_im = torch.einsum('ij,sj,jl->sil', u_im, gamma, u_re.T) - \
-            torch.einsum('ij,sj,jl->sil', u_re, gamma, u_im.T)
+        # c_re = torch.einsum('ij,sj,jl->sil', u_re, gamma, u_re.T) + \
+        #     torch.einsum('ij,sj,jl->sil', u_im, gamma, u_im.T)
+        # c_im = torch.einsum('ij,sj,jl->sil', u_im, gamma, u_re.T) - \
+        #     torch.einsum('ij,sj,jl->sil', u_re, gamma, u_im.T)
 
         # Here I impose the fact c_re is symmetric and c_im antisymmetric
         re_1 = -4.*torch.einsum('mjk,nik,sij->smn', self.f, self.f, c_re )
@@ -799,17 +798,17 @@ class exp_LL_td_2(nn.Module):
         gamma = self.gamma_net(t).squeeze()/self.gamma_normalization
         omega = self.omega_net(t).squeeze()/self.omega_normalization
 
-        #theta = u_re + 1j*u_im + u_re.T - 1j*u_im.T
-        #u = torch.linalg.matrix_exp(1j*theta)
-        #c = torch.einsum('ij,sj,jl->sil', u, gamma.type(torch.complex64), u.H)
-        #c_re = c.real
-        #c_im = c.imag
+        theta = u_re + 1j*u_im + u_re.T - 1j*u_im.T
+        u = torch.linalg.matrix_exp(1j*theta)
+        c = torch.einsum('ij,j,jl->il', u, gamma.type(torch.complex64), u.H)
+        c_re = c.real
+        c_im = c.imag
 
         # NOTE: s index is batch index
-        c_re = torch.einsum('ij,j,jl->il', u_re, gamma, u_re.T) + \
-            torch.einsum('ij,j,jl->il', u_im, gamma, u_im.T)
-        c_im = torch.einsum('ij,j,jl->il', u_im, gamma, u_re.T) - \
-            torch.einsum('ij,j,jl->il', u_re, gamma, u_im.T)
+        # c_re = torch.einsum('ij,j,jl->il', u_re, gamma, u_re.T) + \
+        #     torch.einsum('ij,j,jl->il', u_im, gamma, u_im.T)
+        # c_im = torch.einsum('ij,j,jl->il', u_im, gamma, u_re.T) - \
+        #     torch.einsum('ij,j,jl->il', u_re, gamma, u_im.T)
 
         # Here I impose the fact c_re is symmetric and c_im antisymmetric
         re_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.f, c_re )
