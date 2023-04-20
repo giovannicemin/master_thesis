@@ -18,10 +18,6 @@ class CustomDatasetFromHDF5(Dataset):
     '''Class implementing the Dataset object from HDF5 file.
 
     This class loads the data from HDF5 file.
-    NOTE: The data is normalized according to temeprature and potential,
-        noth values are recovered from the group name.
-    The data can be also resized, namely one can extract the data corresponging
-    to shorter training windows.
 
     This class is implemented such that it can be passed to
     torch.utils.data.DataLoader.
@@ -30,73 +26,21 @@ class CustomDatasetFromHDF5(Dataset):
     ----------
     path : str
         Path to where hdf5 file is
-    group : array of str
+    group : str
         Group name or names of the desired data
-    T_train : int
-        Max time to reach
-    dt : float
-        Time increment used in data generation
-    num_traj : int
-        Number of trajectories
-    resize : bool
-        To resize the dataset according to T_train
-
-    This class return the following data:
-     - X : input data
-     - y : output data
-     - t : time corresponding to X
-     - V : potential of the system
     '''
 
-    def __init__(self, path, group, T_train, dt, num_traj, resize=False):
+    def __init__(self, path, group):
         with h5py.File(path, 'r') as f:
             self.X = []
             self.y = []
             self.t = []
+            self.V = [] # dummy vector
 
-            self.V = []
-
-            for g in group:
-                # extract beta and potential from the name
-                beta = int(g[24:28])*1e-3
-                potential = int(g[14:18])*1e-3
-                # the normalization
-                normalization = 1 - math.e**(-beta/2)
-                if potential > 1:
-                    # divide the normalization to multiply the data
-                    normalization /= potential**2
-
-                if resize:
-                    data_short_X = []
-                    data_short_y = []
-
-                    # have to calculate how long each trajectory is
-                    block = int(f[g+'/X'][()].shape[0]/num_traj)
-                    # calculate how many points to include for each traj
-                    tt = int(T_train/dt)
-
-                    for n in range(num_traj):
-                        data_short_X.extend(f[g + '/X'][n*block:n*block+tt])
-                        data_short_y.extend(f[g + '/y'][n*block:n*block+tt])
-
-                    # normalizing and appending
-                    self.X.extend([x/normalization for x in data_short_X])
-                    self.y.extend([y/normalization for y in data_short_y])
-                    # creating the time vector based on T_train
-                    for _ in range(num_traj):
-                        self.t.extend([i*dt for i in range(int(T_train/dt))])
-
-                else:
-                    self.X.extend(f[g + '/X'][()] / normalization)
-                    self.y.extend(f[g + '/y'][()] / normalization)
-
-                    # creating the time vector based on T_train
-                    for _ in range(num_traj):
-                        self.t.extend([i*dt for i in range(int(T_train/dt) - 1)])
-
-                # I have to extract the potential from the name
-                # and add a vector of the same length
-                self.V.extend([int(g[14:18])*1e-3]*len(f[g + '/X'][()]))
+            self.X.extend(f[group + '/X'][()])
+            self.y.extend(f[group + '/y'][()])
+            self.t.extend(f[group + '/t'][()])
+            self.V.extend([0]*len(f[group + '/X'][()]))
 
     def __getitem__(self, index):
         # return the potential and the vector at t and t+dt
