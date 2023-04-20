@@ -193,25 +193,19 @@ def ensure_empty_dir(directory):
 
 def load_data(path, L, beta, potential, dt, T_train,
               num_traj, batch_size, validation_split, resize=False):
-    '''Function to load the NORMALIZED data from hdf5 file.
+    '''Function to load the data from hdf5 file.
     Reshuffling of data is performed. Then separates train
     from validation and return the iterables.
-    NOTE: this functions takes both beta and potential as arrays
-    in case one wants to have wider training sets.
 
     Parameters
     ----------
     path : str
         Path to the hdf5 file
-    beta : array
     potential : float
-        Array of betas an potentials for the group name
-    resize : bool
-        To either resize or not based on T
+        Potential for the group name
     T_train : int
         Time used in the training procedure
     num_traj : int
-    batch_size : int
     validation_split : float
         Number 0 < .. < 1 which indicates the relative
         sizes of validation and train
@@ -225,8 +219,7 @@ def load_data(path, L, beta, potential, dt, T_train,
 
     # list of group names
     gname = ['cohVec_L_' + str(L) + \
-        '_V_' + str(int(p*1e3)).zfill(4) + \
-        '_beta_' + str(int(b*1e3)).zfill(4) + \
+        '_V_' + str(int(potential*1e3)).zfill(4) + \
         '_dt_' + str(int(dt*1e3)).zfill(4) for b in beta for p in potential]
 
     dataset = CustomDatasetFromHDF5(path, gname, T_train, dt, num_traj, resize)

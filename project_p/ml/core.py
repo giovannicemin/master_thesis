@@ -69,12 +69,10 @@ def train(model, criterion, optimizer, scheduler, train_loader, n_epochs, device
                 loss += alpha_1[0]*torch.norm(model.MLP.v_y, 1)
                 loss += alpha_1[1]*torch.norm(model.MLP.omega, 1)
 
-            if len(alpha_2) != 0:
-                loss += alpha_2[0]*torch.norm(model.MLP.omega_net[1].weight)
-                loss += alpha_2[1]*torch.norm(model.MLP.gamma_net[1].weight)
+            # if len(alpha_2) != 0:
+            #     loss += alpha_2[0]*torch.norm(model.MLP.omega_net[1].weight)
+            #     loss += alpha_2[1]*torch.norm(model.MLP.gamma_net[1].weight)
 
-            
-            
             # backpropagate = calculate derivatives
             loss.backward(retain_graph=True)
 

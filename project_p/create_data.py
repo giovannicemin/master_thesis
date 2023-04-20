@@ -16,7 +16,7 @@ S = [5]
 W = [0.5]
 SW = W + S
 
-prms = {'L' : 20,                # length of spin chain
+prms = {'L' : 80,                # length of spin chain
         'sites' : [0, 1],        # sites of the subsystem S spins
         'omega' : 1,             # Rabi frequency
         # interaction of subsystem's S spins
