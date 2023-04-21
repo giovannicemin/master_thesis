@@ -98,12 +98,17 @@ def generate_data(default_params, argv=[1]):
         # random seed
         seed = np.random.randint(420)
 
-        with multiprocessing.Pool() as pool:
-            # creating the list of inputs for the function
-            items = [(sys_prms, seed*i) for i in range(1, prms['num_traj']+1)]
-            # calling the function for each trajectory
-            for results in pool.starmap(execute_trajectories, items):
-                X.extend(results)
+        # parallelized code
+        # with multiprocessing.Pool() as pool:
+        #     # creating the list of inputs for the function
+        #     items = [(sys_prms, seed*i) for i in range(1, prms['num_traj']+1)]
+        #     # calling the function for each trajectory
+        #     for results in pool.starmap(execute_trajectories, items):
+        #         X.extend(results)
+
+        # to aboid RAM saturation I use the normal loop
+        for i in range(prms['num_traj']):
+            X.extend(execute_trajectories(sys_prms, seed*(i+1)))
 
         # save to file
         file = h5py.File(prms['fname'], 'a')
