@@ -15,4 +15,7 @@
 # data log and data itself (too big)
 /project/create_data.log
 /project/data/data*
+/project_p/data/data*
 /project/data/.*
+
+/project_p/public_repo/
