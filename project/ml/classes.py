@@ -53,6 +53,7 @@ class CustomDatasetFromHDF5(Dataset):
             self.X = []
             self.y = []
             self.t = []
+
             self.V = []
 
             for g in group:
@@ -137,7 +138,7 @@ class MLLP(nn.Module):
 
     def forward(self, **kwargs):
         '''Forward step of the model'''
-        return self.MLP.forward(**kwargs)
+        return self.MLP.forward_t(**kwargs)
 
     def generate_trajectory(self, v_0, T, beta):
         '''Function that generates the trajectory v(t).
@@ -168,11 +169,21 @@ class MLLP(nn.Module):
         length = int(T/self.dt)
 
         results = [v_0]
-        for i in range(length-1):
-            with torch.no_grad():
-                y = self.MLP.predict(torch.Tensor([i*self.dt]), X.float())
-                X = y.clone()
-                results.extend([y.numpy()*normalization])
+        with torch.no_grad():
+            if self.td:
+                for i in range(length-1):
+                    # if the L is time dep. I have to evolve step by step
+                    y = self.MLP.predict(torch.Tensor([i*self.dt]), X.float())
+                    X = y.clone()
+                    results.extend([y.numpy()*normalization])
+            else:
+                # if the L is const I do in one step
+                Lindblad = self.MLP.get_L()
+                for i in range(length-1):
+                    exp_dt_L = torch.linalg.matrix_exp(i*self.dt*Lindblad )
+                    y = torch.add(exp_dt_L[1:,0], X @ torch.transpose(exp_dt_L[1:,1:],0,1))
+
+                    results.extend([y.numpy()*normalization])
 
         return results
 
@@ -318,12 +329,9 @@ class exp_LL(nn.Module):
         bound = 1. / np.sqrt(fan_in)
         nn.init.uniform_(self.omega, -bound, bound)  # bias init
 
-    def forward(self, t, x):
-        """Forward step of the Layer.
-
-        The second and third inputs are not used, but present for compatibility
-        reasons.
-        """
+    def get_L(self):
+        ''' Function that returns teh Lindbladian learned.
+        '''
         # Structure constant for SU(n) are defined
         #
         # We define the real and imaginary part od the Kossakowsky's matrix c.
@@ -334,9 +342,6 @@ class exp_LL(nn.Module):
                          torch.einsum('ki,kj->ij', self.v_y, self.v_y)  )
         c_im = torch.add(torch.einsum('ki,kj->ij', self.v_x, self.v_y),\
                          -torch.einsum('ki,kj->ij', self.v_y, self.v_x) )
-
-        # Structure constant are employed to massage the parameters omega and v into a completely positive dynamics.
-        # Einsum not optimized in torch: https://optimized-einsum.readthedocs.io/en/stable/
 
         # Here I impose the fact c_re is symmetric and c_im antisymmetric
         re_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.f, c_re )
@@ -356,6 +361,16 @@ class exp_LL(nn.Module):
         L[1:,1:] = torch.add(h_commutator_x, d_super_x)
         L[1:,0] = tr_id
 
+        return L
+
+    def forward(self, t, x):
+        """Forward step of the Layer.
+        The step: t -> t+dt
+
+        Time is not used but present from compatibility reasons.
+        """
+        L = self.get_L()
+
         exp_dt_L = torch.matrix_exp(self.dt*L )
         return torch.add(exp_dt_L[1:,0], x @ torch.transpose(exp_dt_L[1:,1:],0,1))
 
@@ -363,36 +378,16 @@ class exp_LL(nn.Module):
         '''Dummy function for compatibility with exp_LL_td'''
         return self.forward(t, x)
 
-    def get_L(self):
-        ''' Function that returns teh Lindbladian learned.
-        (Basically a copy-paste of forward function.)
-        '''
-        with torch.no_grad():
-            c_re = torch.add(torch.einsum('ki,kj->ij', self.v_x, self.v_x),\
-                             torch.einsum('ki,kj->ij', self.v_y, self.v_y)  )
-            c_im = torch.add(torch.einsum('ki,kj->ij', self.v_x, self.v_y),\
-                             -torch.einsum('ki,kj->ij', self.v_y, self.v_x) )
+    def forward_t(self, t, x):
+        """Forward step of the Layer.
+        The step: 0 -> t
+        """
+        L = self.get_L()
 
-            # Here I impose the fact c_re is symmetric and c_im antisymmetric
-            re_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.f, c_re )
-            re_2 = -4.*torch.einsum('mik,njk,ij->mn', self.f, self.f, c_re )
-            im_1 =  4.*torch.einsum('mjk,nik,ij->mn', self.f, self.d, c_im )
-            im_2 = -4.*torch.einsum('mik,njk,ij->mn', self.f, self.d, c_im )
-            d_super_x_re = torch.add(re_1, re_2 )
-            d_super_x_im = torch.add(im_1, im_2 )
-            d_super_x = torch.add(d_super_x_re, d_super_x_im )
-
-            tr_id = 4.*torch.einsum('imj,ij ->m', self.f, c_im )
-
-            h_commutator_x = -4.* torch.einsum('ijk,k->ij', self.f, self.omega)
-
-            # building the Lindbladian operator
-            L = torch.zeros(self.data_dim+1, self.data_dim+1)
-            L[1:,1:] = torch.add(h_commutator_x, d_super_x)
-            L[1:,0] = tr_id
-
-        return L
-
+        exp_dt_L = torch.matrix_exp( torch.einsum('b,ij->bij', t, L) ).float()
+        return torch.add(exp_dt_L[:,1:,0],
+                         torch.einsum('bi,bji->bj', x, exp_dt_L[:,1:,1:]))
+                         #x @ torch.transpose(exp_dt_L[:,1:,1:],1,2))
     def gap(self):
         '''Function to calculate the Lindblad gap, meaning
         the smallest real part of the modulus of the spectrum.
@@ -689,28 +684,31 @@ class exp_LL_td_2(nn.Module):
         # again the tensor, otherwise the model treats them equally (updated in the
         # same manner)
         #frequencies = torch.Tensor([0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5])
-        frequencies = [i for i in np.arange(0.5, 100, 0.5)]
-        #frequencies = [0.1, 0.3, 0.5, 0.7, 1, 3, 5, 7, 10]
+        frequencies = list(np.arange(0.4, 40, 0.1))
+        # frequencies = [i for i in np.arange(0.5, 5, 0.5)]
+        # frequencies = [1.5]
         self.gamma_net = nn.Sequential(FourierLayer(frequencies=torch.Tensor(frequencies),
                                                     T=5,
                                                     learnable_f=True,
                                                     require_amplitude=True,
-                                                    # require_constant=True,
+                                                    require_constant=True,
                                                     require_phase=False),
-                                       # nn.Tanh(),
+                                       # nn.ELU(),
                                        nn.Linear(2*len(frequencies), self.data_dim),
-                                       Square())
+                                       nn.ReLU())
+                                       # Square())
         self.gamma_normalization = 150
 
         self.omega_net = nn.Sequential(FourierLayer(frequencies=torch.Tensor(frequencies),
                                                     T=5,
                                                     learnable_f=True,
                                                     require_amplitude=True,
-                                                    # require_constant=True,
+                                                    require_constant=True,
                                                     require_phase=False),
-                                       # nn.Tanh(),
+                                       # nn.ELU(),
                                        nn.Linear(2*len(frequencies), self.data_dim),
                                        )
+        nn.init.uniform_(self.omega_net[0].const, -0.5, 0.5)
         self.omega_normalization = 150
 
         init_weights(self.omega_net)
@@ -749,8 +747,8 @@ class exp_LL_td_2(nn.Module):
         theta = u_re + 1j*u_im + u_re.T - 1j*u_im.T
         u = torch.linalg.matrix_exp(1j*theta)
         c = torch.einsum('ij,sj,jl->sil', u, gamma.type(torch.complex64), u.H)
-        c_re = c.real
-        c_im = c.imag
+        c_re = c.real.float()
+        c_im = c.imag.float()
 
         # NOTE: s index is batch index
         # c_re = torch.einsum('ij,sj,jl->sil', u_re, gamma, u_re.T) + \
@@ -801,8 +799,8 @@ class exp_LL_td_2(nn.Module):
         theta = u_re + 1j*u_im + u_re.T - 1j*u_im.T
         u = torch.linalg.matrix_exp(1j*theta)
         c = torch.einsum('ij,j,jl->il', u, gamma.type(torch.complex64), u.H)
-        c_re = c.real
-        c_im = c.imag
+        c_re = c.real.float()
+        c_im = c.imag.float()
 
         # NOTE: s index is batch index
         # c_re = torch.einsum('ij,j,jl->il', u_re, gamma, u_re.T) + \
@@ -848,9 +846,9 @@ class exp_LL_td_2(nn.Module):
 
             # NOTE: s index is batch index
             c_re = torch.einsum('ij,j,jl->il', u_re, gamma, u_re.T) + \
-                torch.einsum('ij,j,jl->il', u_im, gamma, u_im.T)
+                    torch.einsum('ij,j,jl->il', u_im, gamma, u_im.T)
             c_im = torch.einsum('ij,j,jl->il', u_im, gamma, u_re.T) - \
-                torch.einsum('ij,j,jl->il', u_re, gamma, u_im.T)
+                    torch.einsum('ij,j,jl->il', u_re, gamma, u_im.T)
 
             # Here I impose the fact c_re is symmetric and c_im antisymmetric
             re_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.f, c_re )

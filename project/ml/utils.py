@@ -37,20 +37,22 @@ class FourierLayer(nn.Module):
         super().__init__()
         self.T = T
         N_freq = len(frequencies)
+        #self.a = nn.Parameter(torch.Tensor([1]))
+        #self.b = nn.Parameter(torch.Tensor([1]))
 
         self.frequencies = nn.Parameter(frequencies, requires_grad=learnable_f)
 
         amplitude = torch.ones(2*N_freq)
         if require_amplitude:
             self.amplitude = nn.Parameter(amplitude)
-            nn.init.normal_(self.amplitude, 0, 0.01)
+            nn.init.normal_(self.amplitude, 0, 0.001)
         else:
             self.amplitude = amplitude
 
         const = torch.zeros_like(amplitude)
         if require_constant:
             self.const = nn.Parameter(const)
-            nn.init.normal_(self.const, 0, 0.1)
+            nn.init.constant_(self.const, 0.5)
         else:
             self.const = const
 
@@ -68,6 +70,7 @@ class FourierLayer(nn.Module):
         # bound the phases
         phase = self.phase.clamp(-0.5*torch.pi, 0.5*torch.pi)
 
+        #t = self.b*torch.tanh(self.a*t)
         t_f_product = torch.einsum('b,f -> bf', t, frequencies)
         argument = t_f_product + phase.repeat(batch_size, 1)
         F = torch.cat((torch.cos(argument),\
@@ -107,7 +110,7 @@ def init_weights(m):
         #bound = 1 / np.sqrt(fan_in)
         #nn.init.uniform_(m.bias, -bound, bound)
 
-        nn.init.constant_(m.weight, 0, 0.01)
+        nn.init.normal_(m.weight, 0, 0.1)
         nn.init.constant_(m.bias, 0)
         #nn.init.uniform_(m.bias, -0.01, 0.01)
 
@@ -136,7 +139,7 @@ def calculate_error(results_ml, results_tebd, T, dt):
     '''
     integral = 0
 
-    # to do thigs rigth first and last element shoul be *1/2
+    # to do thigs right first and last element shoul be *1/2
     for v_ml, v_tebd in zip(results_ml, results_tebd):
         integral += (np.linalg.norm(v_ml - v_tebd) / np.linalg.norm(v_tebd) )**2
 

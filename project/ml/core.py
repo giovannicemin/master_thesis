@@ -75,7 +75,7 @@ def train(model, criterion, optimizer, scheduler, train_loader, n_epochs, device
             # weights regularization : Elastic net
             if len(alpha_1) != 0:
                 loss += alpha_1[0]*torch.norm(model.MLP.omega_net[1].weight, 1)
-                loss += alpha_2[1]*torch.norm(model.MLP.gamma_net[1].weight, 1)
+                loss += alpha_1[1]*torch.norm(model.MLP.gamma_net[1].weight, 1)
 
             if len(alpha_2) != 0:
                 loss += alpha_2[0]*torch.norm(model.MLP.omega_net[1].weight)
