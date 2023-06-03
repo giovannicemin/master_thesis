@@ -19,7 +19,7 @@ data_gen_params = {'L': 20,               # length of spin chain
                    # inverse temperature
                    'beta': [1],  # 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10],
                    # interaction of subsystem's S spins
-                   'potential': [0.5],
+                   'potential': [0.1],
                    'potential_': None,     # interaction of bath spins, if None same as potential
                    'T': 10,                # total time for the evolution
                    'dt': 0.01,             # interval every which save the data
@@ -29,15 +29,15 @@ data_gen_params = {'L': 20,               # length of spin chain
                    'verbose': True,        # verbosity of the script
                    'num_traj': 30,         # how many trajectories to do
                    # file to save the data
-                   'fname': './data/data_unc_training.hdf5'
+                   'fname': './data/noisy_data/data_unc_training.hdf5'
                   }
 
-ml_params = {'model_dir': './data/trained_unc_td_prova/',  # folder where the metadata of the training are stored
-             'validation_split': 0.9,
+ml_params = {'model_dir': './data/trained_noisy/',  # folder where the metadata of the training are stored
+             'validation_split': 0,
              'batch_size': 256,
-             'time_dependent': True,
+             'time_dependent': False,
              # 'batches_per_epoch': 256,
-             'n_epochs': 10000,
+             'n_epochs': 1000,
              'device': 'cpu',
              'mlp_params': {
                  'data_dim': 15,
@@ -80,16 +80,16 @@ if __name__ == '__main__':
         name = 'model_L_' + str(prms['L']) + \
                 '_V_' + str(int(potential*1e3)).zfill(4) + \
                 '_dt_' + str(int(prms['dt']*1e3)).zfill(4) + \
-                '_T' + str(10).zfill(2)
+                '_T' + str(prms['T']).zfill(2) + 'r'
 
         # load existing model
-        # model.load_state_dict(torch.load(Path('./data/trained_unc_td_prova/' + name)))
+        # model.load_state_dict(torch.load(Path('./data/trained_noisy/' + name)))
 
         criterion = torch.nn.MSELoss()
         optimizer = Adam(model.parameters(), lr=0.001)
         #optimizer = Adam(model.parameters(), lr=0.01)
         scheduler = ExponentialLR(optimizer, 1)
-        #scheduler = MultiStepLR(optimizer, milestones=[1400], gamma=0.1)
+        # scheduler = MultiStepLR(optimizer, milestones=[150], gamma=0.1)
         #scheduler = CyclicLR(optimizer, base_lr=1e-6, max_lr=1e-3,
         #                     step_size_up=100, step_size_down=900,
         #                     mode='triangular', cycle_momentum=False)
@@ -97,13 +97,13 @@ if __name__ == '__main__':
         # train the model
         loss = train(model, criterion, optimizer, scheduler, train_loader,
               ml_params['n_epochs'], ml_params['device'],
-                     epochs_to_prune=[], alpha_1=1e-6, alpha_2=1e-5)
+                     epochs_to_prune=[], alpha_1=[], alpha_2=[])
 
-        plt.figure(figsize=(12,6))
-        plt.plot([i for i in range(1, ml_params['n_epochs']+1)], loss)
-        plt.yscale('log')
-        plt.grid()
-        plt.show()
+        # plt.figure(figsize=(12,6))
+        # plt.plot([i for i in range(1, ml_params['n_epochs']+1)], loss)
+        # plt.yscale('log')
+        # plt.grid()
+        # plt.show()
 
         # eval the model
         #eval(model, criterion, eval_loader, ml_params['device'])

@@ -69,12 +69,8 @@ class MLLP(nn.Module):
         super().__init__()
         if time_dependent:
             self.MLP = exp_LL_td_2(**mlp_params)
-            #self.MLP = exp_LL_td_2(**mlp_params)
-            #self.MLP = exp_LL_td_plus(**mlp_params)
         else:
             self.MLP = exp_LL(**mlp_params)  # multi(=1) layer perceptron
-
-        #self.MLP = exp_LL_custom_V(**mlp_params)
 
         self.dt = mlp_params['dt']
         self.potential = potential
@@ -118,7 +114,7 @@ class MLLP(nn.Module):
                 Lindblad = self.MLP.get_L()
                 for i in range(length-1):
                     exp_dt_L = torch.linalg.matrix_exp(i*self.dt*Lindblad )
-                    y = torch.add(exp_dt_L[1:,0], X @ torch.transpose(exp_dt_L[1:,1:],0,1))
+                    y = torch.add(0.5*exp_dt_L[1:,0], X @ torch.transpose(exp_dt_L[1:,1:],0,1))
                     results.extend([y.numpy()])
 
         return results
@@ -160,14 +156,15 @@ class exp_LL(nn.Module):
         v_im = torch.zeros([self.data_dim, self.data_dim],requires_grad=True).float()
         self.v_x = nn.Parameter(v_re)
         self.v_y = nn.Parameter(v_im)
+        self.normalization = 1
 
         # Hamiltonian parameters omega
         omega = torch.zeros([data_dim])
-        self.omega = nn.Parameter(omega).float()
+        self.omega = nn.Parameter(omega).float() # torch.Tensor([1,0,0.25,1,0,0,0,0,0,0,0,0.25,0,0,0.25])
 
         # initialize omega and v
-        nn.init.kaiming_uniform_(self.v_x, a=10)
-        nn.init.kaiming_uniform_(self.v_y, a=10)
+        nn.init.kaiming_uniform_(self.v_x, a=1)
+        nn.init.kaiming_uniform_(self.v_y, a=1)
         fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.v_x)
         bound = 1. / np.sqrt(fan_in)
         nn.init.uniform_(self.omega, -bound, bound)  # bias init
@@ -175,16 +172,18 @@ class exp_LL(nn.Module):
     def get_L(self):
         ''' Function that returns teh Lindbladian learned.
         '''
+        v_x = self.v_x#/self.normalization
+        v_y = self.v_y#/self.normalization
         # Structure constant for SU(n) are defined
         #
         # We define the real and imaginary part od the Kossakowsky's matrix c.
         #       +
         # c = v   v =  ∑  x     x    + y   y    + i ( x   y  - y   x   )
         #              k    ki   kj     ki  kj         ki  kj   ki  kj
-        c_re = torch.add(torch.einsum('ki,kj->ij', self.v_x, self.v_x),\
-                         torch.einsum('ki,kj->ij', self.v_y, self.v_y)  )
-        c_im = torch.add(torch.einsum('ki,kj->ij', self.v_x, self.v_y),\
-                         -torch.einsum('ki,kj->ij', self.v_y, self.v_x) )
+        c_re = torch.add(torch.einsum('ki,kj->ij', v_x, v_x),\
+                         torch.einsum('ki,kj->ij', v_y, v_y)  )
+        c_im = torch.add(torch.einsum('ki,kj->ij', v_x, v_y),\
+                         -torch.einsum('ki,kj->ij', v_y, v_x) )
 
         # Here I impose the fact c_re is symmetric and c_im antisymmetric
         re_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.f, c_re )
@@ -193,9 +192,9 @@ class exp_LL(nn.Module):
         im_2 = -4.*torch.einsum('mik,njk,ij->mn', self.f, self.d, c_im )
         d_super_x_re = torch.add(re_1, re_2 )
         d_super_x_im = torch.add(im_1, im_2 )
-        d_super_x = torch.add(d_super_x_re, d_super_x_im )
+        d_super_x = torch.add(d_super_x_re, d_super_x_im)
 
-        tr_id = 4.*torch.einsum('imj,ij ->m', self.f, c_im )
+        tr_id = 2.*torch.einsum('imj,ij ->m', self.f, c_im )
 
         h_commutator_x = -4.* torch.einsum('ijk,k->ij', self.f, self.omega)
 
@@ -215,7 +214,7 @@ class exp_LL(nn.Module):
         L = self.get_L()
 
         exp_dt_L = torch.matrix_exp(self.dt*L ).float()
-        return torch.add(exp_dt_L[1:,0], x @ torch.transpose(exp_dt_L[1:,1:],0,1))
+        return torch.add(0.5*exp_dt_L[1:,0], x @ torch.transpose(exp_dt_L[1:,1:],0,1))
 
     def predict(self, t, x):
         '''Dummy function for compatibility with exp_LL_td'''
@@ -228,7 +227,7 @@ class exp_LL(nn.Module):
         L = self.get_L()
 
         exp_dt_L = torch.matrix_exp( torch.einsum('b,ij->bij', t, L) ).float()
-        return torch.add(exp_dt_L[:,1:,0],
+        return torch.add(0.5*exp_dt_L[:,1:,0],
                          torch.einsum('bi,bji->bj', x, exp_dt_L[:,1:,1:]))
                          #x @ torch.transpose(exp_dt_L[:,1:,1:],1,2))
     def gap(self):
@@ -306,7 +305,7 @@ class exp_LL_td_2(nn.Module):
                                        nn.Linear(2*len(frequencies), self.data_dim),
                                        nn.ReLU())
                                        # Square())
-        self.gamma_normalization = 150
+        self.gamma_normalization = 1
 
         self.omega_net = nn.Sequential(FourierLayer(frequencies=torch.Tensor(frequencies),
                                                     T=5,
@@ -318,7 +317,7 @@ class exp_LL_td_2(nn.Module):
                                        nn.Linear(2*len(frequencies), self.data_dim),
                                        )
         nn.init.uniform_(self.omega_net[0].const, -0.5, 0.5)
-        self.omega_normalization = 150
+        self.omega_normalization = 1
 
         init_weights(self.omega_net)
         init_weights(self.gamma_net)
@@ -344,7 +343,7 @@ class exp_LL_td_2(nn.Module):
         # self.omega_net = C_inf_Layer(T=10, n=self.data_dim, m=1)
         # self.omega_normalization = 1#5
 
-    def forward(self, t, x):
+    def get_L(self, t):
         """Forward step of the model. """
         batch_size = x.shape[0]
 
@@ -374,7 +373,7 @@ class exp_LL_td_2(nn.Module):
         d_super_x_im = torch.add(im_1, im_2 )
         d_super_x = torch.add(d_super_x_re, d_super_x_im )
 
-        tr_id = 4.*torch.einsum('imj,sij->sm', self.f, c_im )
+        tr_id = 2.*torch.einsum('imj,sij->sm', self.f, c_im )
 
         h_commutator_x = -4.* torch.einsum('kij,sk->sij', self.f, omega).unsqueeze_(0)
 
@@ -383,9 +382,19 @@ class exp_LL_td_2(nn.Module):
         L[:, 1:,1:] = torch.add(h_commutator_x, d_super_x)
         L[:, 1:,0] = tr_id
 
-        exp_dt_L = torch.matrix_exp(self.dt*L )
-        #print( torch.einsum('si,sji->sj', x, torch.transpose(exp_dt_L[:,1:,1:],1,2)).shape )
-        return torch.add(exp_dt_L[:,1:,0], torch.einsum('si,sij->sj', x, torch.transpose(exp_dt_L[:,1:,1:],1,2)))
+        return L
+
+    def forward_t(self, t, x):
+
+        t_ = 0
+        while t_ < t:
+            L = self.get_L(t_)
+            exp_dt_L = torch.matrix_exp(self.dt*L )
+            #print( torch.einsum('si,sji->sj', x, torch.transpose(exp_dt_L[:,1:,1:],1,2)).shape )
+            x = torch.add(0.5*exp_dt_L[:,1:,0], torch.einsum('si,sij->sj', x, torch.transpose(exp_dt_L[:,1:,1:],1,2)))
+            t_ += self.dt
+
+        return x
 
     def get_omega(self, t):
         """Function returning the omega vector. """
@@ -489,352 +498,3 @@ class exp_LL_td_2(nn.Module):
 
         e_val.sort()
         return np.abs(e_val[-2])
-
-
-class exp_LL_td_cohve(nn.Module):
-    ''' Custom Liouvillian **time-dependent** layer
-    to ensure positivity of the rho
-    plus = also dependent on the coherence vector!
-
-    Parameters
-    ----------
-    data_dim : int
-        Dimension of the input data
-    layers : arr
-        Array containing for each layer the number of neurons
-        (can be empty)
-    nonlin : str
-        Activation function of the layer(s)
-    output_nonlin : str
-        Activation function of the output layer
-    dt : float
-        Time step for the input data
-    '''
-
-    def __init__(self, data_dim, layers, nonlin, output_nonlin, dt):
-        super().__init__()
-        self.nonlin = nonlin
-        self.output_nonlin = output_nonlin
-        self.data_dim = data_dim
-        self.dt = dt
-
-        # I want to build a single layer NN
-        self.layers = get_arch_from_layer_list(1, data_dim**2, layers)
-        # ?
-        self.n = int(np.sqrt(data_dim+1))
-        # structure constants
-        self.f, self.d = pauli_s_const()
-
-        # Dissipative parameters v = Re(v) + i Im(v) = x + i y
-        # (v is Z on the notes)
-        self.v_x_net = nn.Sequential(nn.Linear(self.data_dim+1, 16),
-                                     nn.ReLU(),
-                                     nn.Linear(16, 512),
-                                     nn.ReLU(),
-                                     nn.Linear(512, 1024),
-                                     nn.ReLU(),
-                                     #nn.Tanh(),
-                                     nn.Linear(1024, self.data_dim**2),
-                                     nn.Unflatten(-1, (self.data_dim, self.data_dim))).float()
-        self.v_y_net = nn.Sequential(nn.Linear(self.data_dim+1, 16),
-                                     nn.ReLU(),
-                                     nn.Linear(16, 512),
-                                     nn.ReLU(),
-                                     nn.Linear(512, 1024),
-                                     nn.ReLU(),
-                                     #nn.Tanh(),
-                                     nn.Linear(1024, self.data_dim**2),
-                                     nn.Unflatten(-1, (self.data_dim, self.data_dim))).float()
-
-        # Hamiltonian parameters omega
-        self.omega_net = nn.Sequential(nn.Linear(1, self.data_dim)).float()
-
-        # initialize omega and v
-        self.v_x_net.apply(init_weights)
-        self.v_y_net.apply(init_weights)
-        self.omega_net.apply(init_weights)
-
-        # keeping the biases initialized as the previous case
-        # nn.init.kaiming_uniform_(self.v_x_net, a=1)
-        # nn.init.kaiming_uniform_(self.v_y, a=1)
-        # # rescaling to avoid too big initial values
-        # self.v_x.data = 0.01*self.v_x.data
-        # self.v_y.data = 0.01*self.v_y.data
-        # fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.v_x)
-        # bound = 1. / np.sqrt(fan_in)
-        # nn.init.uniform_(self.omega, -bound, bound)  # bias init
-
-        nn.init.normal_(self.v_x_net[-2].bias, 0.0, 0.001)
-        nn.init.normal_(self.v_y_net[-2].bias, 0.0, 0.001)
-        nn.init.normal_(self.omega_net[-1].bias, 0.0, 0.001)
-
-
-    def forward(self, t, x):
-        batch_size = x.shape[0]
-
-        # making the time tensor the right dimension
-        t.unsqueeze_(1)
-
-        v_x = self.v_x_net(torch.cat((t,x), 1))
-        v_y = self.v_y_net(torch.cat((t,x), 1))
-        omega = self.omega_net(t)
-        #
-        # We define the real and imaginary part od the Kossakowsky's matrix c.
-        #       +
-        # c = v   v =  ∑  x     x    + y   y    + i ( x   y  - y   x   )
-        #              k    ki   kj     ki  kj         ki  kj   ki  kj
-        # NOTE: s index is batch index
-        c_re = torch.add(torch.einsum('ski,skj->sij', v_x, v_x),\
-                         torch.einsum('ski,skj->sij', v_y, v_y)  )
-        c_im = torch.add(torch.einsum('ski,skj->sij', v_x, v_y),\
-                         -torch.einsum('ski,skj->sij', v_y, v_x) )
-
-        # Structure constant are employed to massage the parameters omega and v into a completely positive dynamics.
-        # Einsum not optimized in torch: https://optimized-einsum.readthedocs.io/en/stable/
-
-        # Here I impose the fact c_re is symmetric and c_im antisymmetric
-        re_1 = -4.*torch.einsum('mjk,nik,sij->smn', self.f, self.f, c_re )
-        re_2 = -4.*torch.einsum('mik,njk,sij->smn', self.f, self.f, c_re )
-        im_1 = -4.*torch.einsum('mjk,nik,sij->smn', self.f, self.d, c_im )
-        im_2 =  4.*torch.einsum('mik,njk,sij->smn', self.f, self.d, c_im )
-        d_super_x_re = torch.add(re_1, re_2 )
-        d_super_x_im = torch.add(im_1, im_2 )
-        d_super_x = torch.add(d_super_x_re, d_super_x_im )
-
-        tr_id = -4.*torch.einsum('imj,sij->sm', self.f, c_im )
-
-        h_commutator_x =  4.* torch.einsum('ijk,sk->sji', self.f, omega)
-
-        # building the Lindbladian operator
-        L = torch.zeros(batch_size, self.data_dim+1, self.data_dim+1)
-        L[:, 1:,1:] = torch.add(h_commutator_x, d_super_x)
-        L[:, 1:,0] = tr_id
-
-        exp_dt_L = torch.matrix_exp(self.dt*L )
-        #print( torch.einsum('si,sji->sj', x, torch.transpose(exp_dt_L[:,1:,1:],1,2)).shape )
-        return torch.add(exp_dt_L[:,1:,0], torch.einsum('si,sij->sj', x, torch.transpose(exp_dt_L[:,1:,1:],1,2)))
-
-
-    def predict(self, t, x):
-        #t.unsqueeze_(1)
-        v_x = self.v_x_net(torch.cat((t,x)))
-        v_y = self.v_y_net(torch.cat((t,x)))
-        omega = self.omega_net(t)
-
-        # Structure constant for SU(n) are defined
-        #
-        # We define the real and imaginary part od the Kossakowsky's matrix c.
-        #       +
-        # c = v   v =  ∑  x     x    + y   y    + i ( x   y  - y   x   )
-        #              k    ki   kj     ki  kj         ki  kj   ki  kj
-        # NOTE: s index is batch index
-        c_re = torch.add(torch.einsum('ki,kj->ij', v_x, v_x),\
-                         torch.einsum('ki,kj->ij', v_y, v_y)  )
-        c_im = torch.add(torch.einsum('ki,kj->ij', v_x, v_y),\
-                         -torch.einsum('ki,kj->ij', v_y, v_x) )
-
-        # Structure constant are employed to massage the parameters omega and v into a completely positive dynamics.
-        # Einsum not optimized in torch: https://optimized-einsum.readthedocs.io/en/stable/
-
-        # Here I impose the fact c_re is symmetric and c_im antisymmetric
-        re_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.f, c_re )
-        re_2 = -4.*torch.einsum('mik,njk,ij->mn', self.f, self.f, c_re )
-        im_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.d, c_im )
-        im_2 =  4.*torch.einsum('mik,njk,ij->mn', self.f, self.d, c_im )
-        d_super_x_re = torch.add(re_1, re_2 )
-        d_super_x_im = torch.add(im_1, im_2 )
-        d_super_x = torch.add(d_super_x_re, d_super_x_im )
-
-        tr_id = -4.*torch.einsum('imj,ij->m', self.f, c_im )
-
-        h_commutator_x =  4.* torch.einsum('ijk,k->ji', self.f, omega)
-
-        # building the Lindbladian operator
-        L = torch.zeros(self.data_dim+1, self.data_dim+1)
-        L[1:,1:] = torch.add(h_commutator_x, d_super_x)
-        L[1:,0] = tr_id
-
-        exp_dt_L = torch.matrix_exp(self.dt*L )
-        return torch.add(exp_dt_L[1:,0], x @ torch.transpose(exp_dt_L[1:,1:],0,1))
-
-    def get_L(self, t):
-        '''Function that calculate the Lindbladian
-        '''
-        t = torch.Tensor([t])
-        v_x = self.v_x_net(t).reshape(self.data_dim, self.data_dim)
-        v_y = self.v_y_net(t).reshape(self.data_dim, self.data_dim)
-        omega = self.omega_net(t).reshape(self.data_dim)
-
-        # Structure constant for SU(n) are defined
-        #
-        # We define the real and imaginary part od the Kossakowsky's matrix c.
-        #       +
-        # c = v   v =  ∑  x     x    + y   y    + i ( x   y  - y   x   )
-        #              k    ki   kj     ki  kj         ki  kj   ki  kj
-        # NOTE: s index is batch index
-        c_re = torch.add(torch.einsum('ki,kj->ij', v_x, v_x),\
-                         torch.einsum('ki,kj->ij', v_y, v_y)  )
-        c_im = torch.add(torch.einsum('ki,kj->ij', v_x, v_y),\
-                         -torch.einsum('ki,kj->ij', v_y, v_x) )
-
-        # Structure constant are employed to massage the parameters omega and v into a completely positive dynamics.
-        # Einsum not optimized in torch: https://optimized-einsum.readthedocs.io/en/stable/
-
-        # Here I impose the fact c_re is symmetric and c_im antisymmetric
-        re_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.f, c_re )
-        re_2 = -4.*torch.einsum('mik,njk,ij->mn', self.f, self.f, c_re )
-        im_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.d, c_im )
-        im_2 =  4.*torch.einsum('mik,njk,ij->mn', self.f, self.d, c_im )
-        d_super_x_re = torch.add(re_1, re_2 )
-        d_super_x_im = torch.add(im_1, im_2 )
-        d_super_x = torch.add(d_super_x_re, d_super_x_im )
-
-        tr_id = -4.*torch.einsum('imj,ij->m', self.f, c_im )
-
-        h_commutator_x =  4.* torch.einsum('ijk,k->ji', self.f, omega)
-
-        # building the Lindbladian operator
-        L = torch.zeros(self.data_dim+1, self.data_dim+1)
-        L[1:,1:] = torch.add(h_commutator_x, d_super_x)
-        L[1:,0] = tr_id
-
-        return L
-
-    def gap(self, t):
-        '''Function to calculate the Lindblad gap,
-        meaning the smallest real part of spectrum in modulus
-        '''
-
-        L = self.get_L(t)
-        # take the real part of the spectrum
-        e_val = np.linalg.eigvals(L.detach().numpy()).real
-
-        e_val.sort()
-        return np.abs(e_val[-2])
-
-
-class exp_LL_custom_V(nn.Module):
-    ''' Custom Liouvillian layer to ensure positivity of the rho.
-    The fact the potential explicitly appear (should) make the
-    model independant of the potential.
-
-    Parameters
-    ----------
-    data_dim : int
-        Dimension of the input data
-    layers : arr
-        Array containing for each layer the number of neurons
-        (can be empty)
-    nonlin : str
-        Activation function of the layer(s)
-    output_nonlin : str
-        Activation function of the output layer
-    dt : float
-        Time step for the input data
-    '''
-
-    def __init__(self, data_dim, layers, nonln, output_nonlin, dt):
-        super().__init__()
-        self.nonlin = nonlin
-        self.output_nonlin = output_nonlin
-        self.data_dim = data_dim
-        self.dt = dt
-
-        # I want to build a single layer NN
-        self.layers = get_arch_from_layer_list(1, data_dim**2, layers)
-        # ?
-        self.n = int(np.sqrt(data_dim+1))
-        # structure constants
-        self.f, self.d = pauli_s_const()
-
-        # Dissipative parameters v = Re(v) + i Im(v) = x + i y
-        # (v is Z on the notes)
-        v_re = torch.zeros([self.data_dim, self.data_dim],requires_grad=True).float()
-        v_im = torch.zeros([self.data_dim, self.data_dim],requires_grad=True).float()
-        self.v_x = nn.Parameter(v_re)
-        self.v_y = nn.Parameter(v_im)
-
-        # Hamiltonian parameters omega
-        omega = torch.zeros([data_dim])
-        self.omega = nn.Parameter(omega).float()
-        self.omega_int = nn.Parameter(omega).float()
-
-        # initialize omega and v
-        nn.init.kaiming_uniform_(self.v_x, a=1)
-        nn.init.kaiming_uniform_(self.v_y, a=1)
-        # rescaling to avoid too big initial values
-        self.v_x.data = 0.001*self.v_x.data
-        self.v_y.data = 0.001*self.v_y.data
-        fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.v_x)
-        bound = 1. / np.sqrt(fan_in)
-        nn.init.uniform_(self.omega, -bound, bound)  # bias init
-        nn.init.uniform_(self.omega_int, -bound, bound)  # bias init
-
-    def forward(self, x, potential):
-        # at input also the potential appearing in the Hamiltonian
-        #
-        # Structure constant for SU(n) are defined
-        #
-        # We define the real and imaginary part od the Kossakowsky's matrix c.
-        #       +
-        # c = v   v =  ∑  x     x    + y   y    + i ( x   y  - y   x   )
-        #              k    ki   kj     ki  kj         ki  kj   ki  kj
-        c_re = torch.add(torch.einsum('ki,kj->ij', self.v_x, self.v_x),\
-                         torch.einsum('ki,kj->ij', self.v_y, self.v_y)  )
-        c_im = torch.add(torch.einsum('ki,kj->ij', self.v_x, self.v_y),\
-                         -torch.einsum('ki,kj->ij', self.v_y, self.v_x) )
-
-        # Structure constant are employed to massage the parameters omega and v into a completely positive dynamics.
-        # Einsum not optimized in torch: https://optimized-einsum.readthedocs.io/en/stable/
-
-        # dummy index
-        dummy = torch.ones(len(potential))
-
-        # Here I impose the fact c_re is symmetric and c_im antisymmetric
-        re_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.f, c_re )
-        re_2 = -4.*torch.einsum('mik,njk,ij->mn', self.f, self.f, c_re )
-        im_1 = -4.*torch.einsum('mjk,nik,ij->mn', self.f, self.d, c_im )
-        im_2 =  4.*torch.einsum('mik,njk,ij->mn', self.f, self.d, c_im )
-        d_super_x_re = torch.add(re_1, re_2 )
-        d_super_x_im = torch.add(im_1, im_2 )
-        d_super_x = torch.add(d_super_x_re, d_super_x_im )
-
-        tr_id = -4.*torch.einsum('imj,ij ->m', self.f, c_im )
-
-        # dissipative part
-        dissipative = torch.zeros(self.data_dim+1, self.data_dim+1)
-        dissipative[1:, 1:] = d_super_x
-        dissipative[1:, 0] = tr_id
-
-        # hamiltonian part
-        h_commutator_x =  4.* torch.einsum('ijk,k->ji', self.f, self.omega)
-        h_commutator_x_int = 4.* torch.einsum('ijk,k->ji', self.f, self.omega_int)
-
-        hamiltonian = torch.zeros(self.data_dim+1, self.data_dim+1)
-        hamiltonian_int = torch.zeros(self.data_dim+1, self.data_dim+1)
-        hamiltonian[1:, 1:] = h_commutator_x
-        hamiltonian_int[1:, 1:] = h_commutator_x_int
-
-        # adding the potential index
-        # L   = id  H   + V  H  + (V^2)  D
-        #  ijk    i  jk    i  jk       i  jk
-        hamiltonian = torch.einsum('i,jk -> ijk', dummy, hamiltonian)
-        hamiltonian_int = torch.einsum('i,jk -> ijk', 100*potential, hamiltonian_int)
-        dissipative = torch.einsum('i,jk -> ijk', potential**2, dissipative)
-
-        # building the Lindbladian operator
-        L = torch.add(hamiltonian, hamiltonian_int)
-        L = torch.add(L, dissipative)
-
-        exp_dt_L = torch.matrix_exp(self.dt*L )
-
-        # x must be 2D
-        if len(x.shape) == 1:
-            x.resize_(1, 15)
-        # have to add identity to x
-        x = torch.cat((torch.ones(x.shape[0], 1), x), 1)
-
-        # calculating the result
-        y = torch.einsum('ikj,ij -> ik', exp_dt_L, x)
-
-        return y[:, 1:]

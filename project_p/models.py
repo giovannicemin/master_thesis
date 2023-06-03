@@ -95,6 +95,12 @@ class SpinChain:
 
         self.verboseprint('Performing the time evolution \n')
 
+        # random initial condition
+        rand_uni = qu.gen.rand.random_seed_fn(qu.gen.rand.rand_uni)
+        rand1 = rand_uni(2, seed=seed)
+        rand2 = rand_uni(2, seed=3*seed)
+        self.psi_init = self.psi.gate(rand1&rand2, (0,1), contract='swap+split')
+
         start = time.time()
 
         # first I build the observables and results dictionaries
@@ -110,7 +116,7 @@ class SpinChain:
         self.results.pop('I1I2')
 
         # create the object
-        tebd = qtn.TEBD(self.psi, self.H)
+        tebd = qtn.TEBD(self.psi_init, self.H)
 
         # cutoff for truncating after each infinitesimal-time operator application
         tebd.split_opts['cutoff'] = self.cutoff
@@ -121,7 +127,7 @@ class SpinChain:
             for key in self.keys:
                 ob1 = qu.pauli(key[0])
                 ob2 = qu.pauli(key[2])
-                self.results[key].append((psit.H @ psit.gate(ob1 & ob2, (0, 1))).real)
+                self.results[key].append((psit.H @ psit.gate(ob1 & ob2, (0, 1))).real*0.5)
 
         end = time.time()
         self.verboseprint(f'It took:{int(end - start)}s')
@@ -328,7 +334,8 @@ class SpinChain_ex:
 
 
 class Lindbladian(ABC):
-    """Parent class for Lindbladian"""
+    """Parent class for time-dependent Lindbladian.
+    """
 
     def __init__(self, dt=0.01):
         self.dt = dt
@@ -348,7 +355,7 @@ class Lindbladian(ABC):
 
         return eigenval
 
-    def forward(self, t, x):
+    def get_L(self, t):
 
         re_c = self.kossakowski(t).real.float()
         im_c = self.kossakowski(t).imag.float()
@@ -362,7 +369,7 @@ class Lindbladian(ABC):
         d_super_x_im = torch.add(im_1, im_2 )
         d_super_x = torch.add(d_super_x_re, d_super_x_im )
 
-        tr_id = 4.*torch.einsum('imj,ij->m', self.f, im_c )
+        tr_id = 2.*torch.einsum('imj,ij->m', self.f, im_c )
 
         h_commutator_x = -4.* torch.einsum('ijk,k->ij', self.f, self.omega(t))
 
@@ -371,8 +378,21 @@ class Lindbladian(ABC):
         L[1:,1:] = torch.add(h_commutator_x, d_super_x)
         L[1:,0] = tr_id
 
+        return L
+
+    def forward_t(self, t, x):
+        """Time dependent Lindbladian
+        """
+        L = self.get_L(t)
         exp_dt_L = torch.matrix_exp(self.dt*L )
-        return torch.add(exp_dt_L[1:,0], x @ torch.transpose(exp_dt_L[1:,1:],0,1))
+        return torch.add(0.5*exp_dt_L[1:,0], x @ torch.transpose(exp_dt_L[1:,1:],0,1))
+
+    def forward(self, x):
+        """Time independent Lindbladian
+        """
+        exp_dt_L = torch.matrix_exp(self.dt*self.L )
+        return torch.add(0.5*exp_dt_L[1:,0], x @ torch.transpose(exp_dt_L[1:,1:],0,1))
+
 
     def generate_trajectory(self, v_0, T):
         '''Function that generates the time evolution of
@@ -397,8 +417,10 @@ class Lindbladian(ABC):
 
         length = int(T/self.dt)
 
+        self.L = self.get_L(1)
+
         for i in range(length-1):
-            y = self.forward(i*self.dt, X.float())
+            y = self.forward(X.float())
             X = y.clone()
             results.extend([y.numpy()])
             t.append((i+1)*self.dt)

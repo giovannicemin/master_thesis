@@ -36,7 +36,7 @@ def train(model, criterion, optimizer, scheduler, train_loader, n_epochs, device
 
     for epoch in range(1, n_epochs+1):
         model.train()
-        print('= Starting epoch ', epoch, '/', n_epochs)
+        # print('= Starting epoch ', epoch, '/', n_epochs)
 
         summed_train_loss = np.array([])
 
@@ -69,9 +69,10 @@ def train(model, criterion, optimizer, scheduler, train_loader, n_epochs, device
                 loss += alpha_1[0]*torch.norm(model.MLP.v_y, 1)
                 loss += alpha_1[1]*torch.norm(model.MLP.omega, 1)
 
-            # if len(alpha_2) != 0:
-            #     loss += alpha_2[0]*torch.norm(model.MLP.omega_net[1].weight)
-            #     loss += alpha_2[1]*torch.norm(model.MLP.gamma_net[1].weight)
+            if len(alpha_2) != 0:
+                loss += alpha_2[0]*torch.norm(model.MLP.v_x)
+                loss += alpha_2[0]*torch.norm(model.MLP.v_y)
+                loss += alpha_2[1]*torch.norm(model.MLP.omega)
 
             # backpropagate = calculate derivatives
             loss.backward(retain_graph=True)
@@ -81,9 +82,12 @@ def train(model, criterion, optimizer, scheduler, train_loader, n_epochs, device
 
         scheduler.step()
 
-        print('=== Mean train loss: {:.12f}'.format(summed_train_loss.mean()))
-        print('=== lr: {:.5f}'.format(scheduler.get_last_lr()[0]))
+        # print('=== Mean train loss: {:.12f}'.format(summed_train_loss.mean()))
+        # print('=== lr: {:.5f}'.format(scheduler.get_last_lr()[0]))
         mean_train_loss.append(summed_train_loss.mean())
+
+    print('=== Mean train loss: {:.12f}'.format(summed_train_loss.mean()))
+    print('=== lr: {:.5f}'.format(scheduler.get_last_lr()[0]))
 
     return mean_train_loss
 

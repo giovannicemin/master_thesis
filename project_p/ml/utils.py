@@ -191,8 +191,8 @@ def ensure_empty_dir(directory):
     if len(os.listdir(directory)) != 0:
         raise Exception('Model dir not empty!')
 
-def load_data(path, L, beta, potential, dt, T_train,
-              num_traj, batch_size, validation_split, resize=False):
+def load_data(path, L, potential, N, M,
+              num_traj, batch_size, validation_split):
     '''Function to load the data from hdf5 file.
     Reshuffling of data is performed. Then separates train
     from validation and return the iterables.
@@ -203,8 +203,6 @@ def load_data(path, L, beta, potential, dt, T_train,
         Path to the hdf5 file
     potential : float
         Potential for the group name
-    T_train : int
-        Time used in the training procedure
     num_traj : int
     validation_split : float
         Number 0 < .. < 1 which indicates the relative
@@ -218,22 +216,23 @@ def load_data(path, L, beta, potential, dt, T_train,
     from ml.classes import CustomDatasetFromHDF5
 
     # list of group names
-    gname = ['cohVec_L_' + str(L) + \
-        '_V_' + str(int(potential*1e3)).zfill(4) + \
-        '_dt_' + str(int(dt*1e3)).zfill(4) for b in beta for p in potential]
+    gname = 'cohVec_L_' + str(L) + \
+            '_V_' + str(int(potential*1e3)).zfill(4) + \
+            '_N_' + str(int(N)) + '_M_' + str(int(M))
 
-    dataset = CustomDatasetFromHDF5(path, gname, T_train, dt, num_traj, resize)
+    dataset = CustomDatasetFromHDF5(path, gname)
 
     # creating the indeces for training and validation split
     dataset_size = len(dataset)
     indeces = list(range(dataset_size))
     split = int(np.floor(validation_split * dataset_size))
 
+    print(f"Data points used in the training {dataset_size}")
+
     # shuffling the datesets
     np.random.seed(42)
     np.random.shuffle(indeces)
     train_indices, val_indices = indeces[split:], indeces[:split]
-    print(f"Data points used in the training {dataset_size-split}/{dataset_size}")
 
     # Creating PT data samplers and loaders
     train_sampler = SubsetRandomSampler(train_indices)

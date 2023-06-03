@@ -66,7 +66,6 @@ class SpinChain:
         self.verboseprint('Building the spin chain MPS: \n')
         B = np.array([1, 0, 0, 1])/np.sqrt(2)
         arrays = [B]*L
-        arrays[0] = np.array([1,0,0,0])
         self.psi = qtn.MPS_product_state(arrays, cyclic=True)#, site_ind_id='s{}')
         if self._verbose:
             self.psi.show()
@@ -74,8 +73,6 @@ class SpinChain:
 
         # build the Hamiltonian of the system
         self.verboseprint('Building the Hamiltonian of the system \n')
-
-        # dims = [2]*L # overall space of L qbits
 
         I = qu.pauli('I')
         X = qu.pauli('X')
@@ -120,36 +117,34 @@ class SpinChain:
             self.psi_th.show()
             print('\n')
 
-    def evolve(self, seed, uncorrelate=True):
+    def evolve(self, seed):
         '''Perform time evolution of the System
         Parameter
         ---------
         seed : int
             Seed needed for random perturbation of thermal state
-        uncorrelate : bool
-            Whether to uncorrelate or not the initial state
         '''
 
         self.verboseprint('Performing the time evolution \n')
 
         # initial codition obtained by means of a projection
         # and random unitary
-        # sigma_m = 0.5*(qu.pauli('X') - 1j*qu.pauli('Y'))
-        # projection = sigma_m & qu.pauli('I')
-        # if uncorrelate:
-        #     self.psi_th.gate_(projection & projection, (0,1), contract='swap+split')
-        #     self.psi_th /= self.psi_th.norm() #normalization
+        sigma_m = 0.5*(qu.pauli('X') - 1j*qu.pauli('Y'))
+        projection = sigma_m & qu.pauli('I')
+        self.psi_th.gate_(projection & projection, (0,1), contract='swap+split')
 
-        # # random initial condition
-        # rand_uni = qu.gen.rand.random_seed_fn(qu.gen.rand.rand_uni)
-        # rand1 = rand_uni(2, seed=seed) & qu.pauli('I')
-        # rand2 = rand_uni(2, seed=3*seed) & qu.pauli('I')
-        # self.psi_init = self.psi_th.gate(rand1&rand2, (0,1), contract='swap+split')
+        # random initial condition
+        rand_uni = qu.gen.rand.random_seed_fn(qu.gen.rand.rand_uni)
+        rand1 = rand_uni(2, seed=seed) & qu.pauli('I')
+        rand2 = rand_uni(2, seed=3*seed) & qu.pauli('I')
+        self.psi_init = self.psi_th.gate(rand1&rand2, (0,1), contract='swap+split')
+        self.psi_init /= self.psi_init.norm()  # normalization
 
         # up-up initial condition
-        print("Projecting spins along Z \n")
-        sigma_z = qu.pauli('Z')&qu.pauli('I')
-        self.psi_init = self.psi_th.gate(sigma_z&sigma_z, (0,1), contract='swap+split')
+        # print("Projecting spins along Z \n")
+        # sigma_z = qu.pauli('Z')&qu.pauli('I')
+        # sigma_x = qu.pauli('X')&qu.pauli('I')
+        # self.psi_init = self.psi_th.gate(sigma_x&sigma_x, (0,1), contract='swap+split')
 
         start = time.time()
 
@@ -158,8 +153,8 @@ class SpinChain:
         self.results = {}
         for ob1, ob2 in product(['I', 'X', 'Y', 'Z'], repeat=2):
             key = ob1 + '1' + ob2 + '2'
-            observables[key] = []
             self.results[key] = []
+            observables[key] = 0.5*(qu.pauli(ob1)&qu.pauli('I'))&(qu.pauli(ob2)&qu.pauli('I'))
 
         # dropping the identity
         observables.pop('I1I2')
@@ -175,9 +170,7 @@ class SpinChain:
 
         for psit in tebd.at_times(self.t, tol=self.tolerance):
             for key in self.keys:
-                ob1 = qu.pauli(key[0]) & qu.pauli('I')
-                ob2 = qu.pauli(key[2]) & qu.pauli('I')
-                self.results[key].append((psit.H @ psit.gate(ob1 & ob2, (0, 1))).real)
+                self.results[key].append((psit.H @ psit.gate(observables[key], (0, 1))).real)
 
         end = time.time()
         self.verboseprint(f'It took:{int(end - start)}s')
@@ -191,9 +184,6 @@ class SpinChain:
         else:
             length = len(self.results['I1X2'])
             return [[self.results[key][i] for key in self.keys] for i in range(length)]
-
-            # tried to return dataframe, but array is better
-            #return pd.DataFrame(data=self.results, dtype=np.float32)
 
     def calculate_correlations(self, site, step=0.1, seed=0):
         """Function that calculates the spread of correlations
@@ -311,14 +301,12 @@ class SpinChain_ex:
         self.e, self.U = la.eig(self.Hamiltonian, isherm=True)
 
 
-    def evolve(self, seed, uncorrelate=True):
+    def evolve(self, seed):
         '''Perform time evolution of the System
         Parameter
         ---------
         seed : int
             Seed needed for random perturbation of thermal state
-        uncorrelate : bool
-            Wheather to have uncorrelated initial conditions
         '''
 
         # creating the initial conditions
@@ -330,8 +318,7 @@ class SpinChain_ex:
         P = qu.ikron(sigma_m & sigma_m, self.dims, (0, 1))
         P_H = qu.ikron(sigma_p & sigma_p, self.dims, (0, 1))
 
-        if uncorrelate:
-            rho = P @ rho @ P_H
+        rho = P @ rho @ P_H
 
         rand_uni = qu.gen.rand.random_seed_fn(qu.gen.rand.rand_uni)
         rand1 = rand_uni(2, seed=seed)
@@ -346,7 +333,7 @@ class SpinChain_ex:
         for ob1, ob2 in product(['I', 'X', 'Y', 'Z'], repeat=2):
             key = ob1 + '1' + ob2 + '2'
             self.results[key] = []
-            observables[key] = qu.ikron(qu.pauli(ob1)&qu.pauli(ob2), self.dims, (0, 1))
+            observables[key] = 0.5*qu.ikron(qu.pauli(ob1)&qu.pauli(ob2), self.dims, (0, 1))
 
         # dropping the identity
         observables.pop('I1I2')
@@ -430,7 +417,7 @@ class Lindbladian(ABC):
         exp_dt_L = torch.matrix_exp(self.dt*L )
         return torch.add(exp_dt_L[1:,0], x @ torch.transpose(exp_dt_L[1:,1:],0,1))
 
-    def generate_trajectory(self, v_0, T, beta=1):
+    def generate_trajectory(self, v_0, T):
         '''Function that generates the time evolution of
         the system, namely the trajectory of v(t) coherence
         vector
@@ -449,8 +436,6 @@ class Lindbladian(ABC):
         vector of vectors representing the v(t) at each
         instant of time.
         '''
-        # I use the same normalization
-        normalization = 1 - math.e**(-beta/2)
         results = [v_0]
 
         X = torch.tensor(v_0/normalization, dtype=torch.double)
@@ -460,6 +445,6 @@ class Lindbladian(ABC):
         for i in range(length-1):
             y = self.forward(i*self.dt, X.float())
             X = y.clone()
-            results.extend([y.numpy()*normalization])
+            results.extend([y.numpy()])
 
         return results
